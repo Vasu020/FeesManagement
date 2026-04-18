@@ -11,25 +11,28 @@ import { Settings, School, DollarSign, UserRoundCog } from "lucide-react";
 import GeneralSettings from "./GeneralSettings";
 import ClassSettings from "./ClassSettings";
 import FeesSettings from "./FeesSettings";
-
+import FeeRulesSettings from "./FeeRulesSettings ";
 function SettingsPage() {
-  // State for controlling Sheet visibility
   const [openSheet, setOpenSheet] = useState<any>(null);
 
   return (
     <div className="container mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">Settings</h1>
+      <h1 className="text-3xl font-bold mb-8">Settings</h1>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        
         {/* General Card */}
         <Card
           onClick={() => setOpenSheet("general")}
-          className="cursor-pointer hover:bg-gray-50"
+          className="cursor-pointer hover:shadow-xl transition-all duration-300 border border-gray-100 bg-white"
         >
-          <CardHeader>
-            <Settings className="h-6 w-6 text-muted-foreground mb-2" />
-            <CardTitle>General</CardTitle>
+          <CardHeader className="pb-4">
+            <div className="w-12 h-12 rounded-2xl bg-zinc-900 flex items-center justify-center mb-4 shadow-lg shadow-gray-400">
+              <Settings className="h-7 w-7 text-white" />
+            </div>
+            <CardTitle className="text-xl">General</CardTitle>
             <CardDescription>
-             {`View and update basic application details`}
+              View and update basic application details
             </CardDescription>
           </CardHeader>
         </Card>
@@ -37,13 +40,15 @@ function SettingsPage() {
         {/* Classes Card */}
         <Card
           onClick={() => setOpenSheet("classes")}
-          className="cursor-pointer hover:bg-gray-50"
+          className="cursor-pointer hover:shadow-xl transition-all duration-300 border border-gray-100 bg-white"
         >
-          <CardHeader>
-            <School className="h-6 w-6 text-muted-foreground mb-2" />
-            <CardTitle>{`Classes`}</CardTitle>
+          <CardHeader className="pb-4">
+            <div className="w-12 h-12 rounded-2xl bg-zinc-900 flex items-center justify-center mb-4 shadow-lg shadow-gray-400">
+              <School className="h-7 w-7 text-white" />
+            </div>
+            <CardTitle className="text-xl">Classes</CardTitle>
             <CardDescription>
-             {`Manage class configurations, including maximum student strength, number of sections,`}
+              Manage class configurations, including maximum student strength and sections
             </CardDescription>
           </CardHeader>
         </Card>
@@ -51,45 +56,48 @@ function SettingsPage() {
         {/* Fees Structure Card */}
         <Card
           onClick={() => setOpenSheet("fees")}
-          className="cursor-pointer hover:bg-gray-50"
+          className="cursor-pointer hover:shadow-xl transition-all duration-300 border border-gray-100 bg-white"
         >
-          <CardHeader>
-            <DollarSign className="h-6 w-6 text-muted-foreground mb-2" />
-            <CardTitle>Fees Structure</CardTitle>
+          <CardHeader className="pb-4">
+            <div className="w-12 h-12 rounded-2xl bg-zinc-900 flex items-center justify-center mb-4 shadow-lg shadow-gray-400">
+              <DollarSign className="h-7 w-7 text-white" />
+            </div>
+            <CardTitle className="text-xl">Fees Structure</CardTitle>
             <CardDescription>
-              {`Define and manage fee amounts and structures for specific classes`}
+              Define and manage fee amounts and structures for specific classes
             </CardDescription>
           </CardHeader>
         </Card>
 
-         {/* Users Card */}
+        {/* Fee Rules Card */}
         <Card
-          onClick={() => setOpenSheet("users")}
-          className="cursor-pointer hover:bg-gray-50"
+          onClick={() => setOpenSheet("feeRules")}
+          className="cursor-pointer hover:shadow-xl transition-all duration-300 border border-gray-100 bg-white"
         >
-          <CardHeader>
-            <UserRoundCog className="h-6 w-6 text-muted-foreground mb-2" />
-            <CardTitle>{`Users`}</CardTitle>
+          <CardHeader className="pb-4">
+            <div className="w-12 h-12 rounded-2xl bg-zinc-900 flex items-center justify-center mb-4 shadow-lg shadow-gray-400">
+              <UserRoundCog className="h-7 w-7 text-white" />
+            </div>
+            <CardTitle className="text-xl">Fee Rules</CardTitle>
             <CardDescription>
-             {`Add, edit, and manage user accounts along with their roles and permissions`}
+              Configure late fee charges, concession presets and scholarship presets
             </CardDescription>
           </CardHeader>
         </Card>
       </div>
 
-      {/* General Settings Sheet */}
+      {/* Sheets */}
       {openSheet === "general" && (
         <GeneralSettings openSheet={openSheet} setOpenSheet={setOpenSheet} />
       )}
-
-      {/* Classes Sheet with DataTable */}
       {openSheet === "classes" && (
         <ClassSettings openSheet={openSheet} setOpenSheet={setOpenSheet} />
       )}
-
-      {/* Fees Structure Sheet with DataTable */}
       {openSheet === "fees" && (
         <FeesSettings openSheet={openSheet} setOpenSheet={setOpenSheet} />
+      )}
+      {openSheet === "feeRules" && (
+        <FeeRulesSettings openSheet={openSheet} setOpenSheet={setOpenSheet} />
       )}
     </div>
   );

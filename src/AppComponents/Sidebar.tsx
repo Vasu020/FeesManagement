@@ -35,7 +35,7 @@ const Sidebar = () => {
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const isAdmin = user.role === "admin";
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   // AFTER (from localStorage)
   const school = JSON.parse(localStorage.getItem("school") || "{}");
@@ -61,7 +61,7 @@ const Sidebar = () => {
       className={cn(
         "group relative h-screen bg-gradient-to-b from-slate-950 to-slate-900",
         "border-r border-slate-800/80 text-slate-200 transition-all duration-300 ease-in-out",
-        isCollapsed ? "w-16" : "w-72",
+        isCollapsed ? "w-16" : "w-65",
       )}
     >
       {/* Background subtle overlay */}
@@ -78,8 +78,8 @@ const Sidebar = () => {
             )}
           >
             {/* Logo circle */}
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-lg">
-              <GraduationCap className="h-6 w-6 text-white" />
+            <div className="flex items-center gap-3 px-1 py-1 rounded-lg text-slate-300 hover:bg-white/5 hover:text-white transition-all duration-200">
+              <GraduationCap className="h-8 w-8 text-white" />
             </div>
 
             {!isCollapsed && (
