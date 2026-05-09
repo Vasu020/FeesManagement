@@ -5,7 +5,7 @@ import {
   Navigate,
 } from "react-router-dom";
 import SchoolLoginPage from "./AppComponents/SchoolLoginPage";
-import Home from "./AppComponents/Pages/Home";
+import Home from "./AppComponents/Pages/StudentDirectory/Home";
 import Dashboard from "./AppComponents/Pages/Dashboard";
 import SettingsPage from "./AppComponents/Pages/AppSettings/Settings";
 import ProtectedLayout from "./ProtectedLayout";

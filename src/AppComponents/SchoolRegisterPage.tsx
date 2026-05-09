@@ -74,9 +74,9 @@ export default function SchoolRegisterPage() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const passwordFeedback = getPasswordFeedback(formData.password);
+  const passwordFeedback = getPasswordFeedback(formData?.password);
   const isPasswordValid = passwordFeedback.length === 0;
-  const strength = getPasswordStrength(formData.password);
+  const strength = getPasswordStrength(formData?.password);
 
   // ── Handlers ──────────────────────────
   const handleChange = (e: any) => {
@@ -93,7 +93,7 @@ export default function SchoolRegisterPage() {
     if (!isPasswordValid) {
       return setError("Please fix the password issues before submitting.");
     }
-    if (formData.password !== formData.confirmPassword) {
+    if (formData?.password !== formData?.confirmPassword) {
       return setError("Passwords do not match.");
     }
 
@@ -103,11 +103,11 @@ export default function SchoolRegisterPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          school_name: formData.name,
-          short_name: formData.short_name,
-          email: formData.email,
-          // phone: formData.phone || null,
-          password: formData.password,
+          school_name: formData?.name,
+          short_name: formData?.short_name,
+          email: formData?.email,
+          password: formData?.password,
+          // phone: formData?.phone || null,
         }),
       });
 
@@ -164,7 +164,7 @@ export default function SchoolRegisterPage() {
                 <GraduationCap className="absolute left-3.5 top-3.5 h-5 w-5 text-slate-400" />
                 <Input
                   id="name"
-                  value={formData.name}
+                  value={formData?.name}
                   onChange={handleChange}
                   placeholder="e.g. Delhi Public School"
                   className="pl-11 h-12 rounded-lg border-slate-300 focus:border-indigo-400 focus:ring-indigo-400/20"
@@ -183,7 +183,7 @@ export default function SchoolRegisterPage() {
               </Label>
               <Input
                 id="short_name"
-                value={formData.short_name}
+                value={formData?.short_name}
                 onChange={handleChange}
                 placeholder="e.g. DPS-FZL or DPSFAZILKA"
                 className="h-12 rounded-lg border-slate-300 focus:border-indigo-400 focus:ring-indigo-400/20"
@@ -202,7 +202,7 @@ export default function SchoolRegisterPage() {
                   <Input
                     id="email"
                     type="email"
-                    value={formData.email}
+                    value={formData?.email}
                     onChange={handleChange}
                     placeholder="admin@your-school.edu"
                     className="pl-11 h-12 rounded-lg border-slate-300 focus:border-indigo-400 focus:ring-indigo-400/20"
@@ -221,7 +221,7 @@ export default function SchoolRegisterPage() {
                   <Input
                     id="phone"
                     type="tel"
-                    value={formData.phone}
+                    value={formData?.phone}
                     onChange={handleChange}
                     placeholder="+91 98765 43210"
                     className="pl-11 h-12 rounded-lg border-slate-300 focus:border-indigo-400 focus:ring-indigo-400/20"
@@ -240,11 +240,11 @@ export default function SchoolRegisterPage() {
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
-                  value={formData.password}
+                  value={formData?.password}
                   onChange={handleChange}
                   placeholder="Create a strong password"
                   className={`pl-11 pr-11 h-12 rounded-lg border-slate-300 focus:border-indigo-400 focus:ring-indigo-400/20 ${
-                    formData.password && !isPasswordValid
+                    formData?.password && !isPasswordValid
                       ? "border-amber-400"
                       : ""
                   }`}
@@ -265,7 +265,7 @@ export default function SchoolRegisterPage() {
               </div>
 
               {/* Strength Bar */}
-              {formData.password && (
+              {formData?.password && (
                 <div className="space-y-1.5 mt-1">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-500">Password strength</span>
@@ -294,23 +294,23 @@ export default function SchoolRegisterPage() {
                     {[
                       {
                         label: "At least 8 characters",
-                        pass: formData.password.length >= 8,
+                        pass: formData?.password.length >= 8,
                       },
                       {
                         label: "One uppercase letter",
-                        pass: /[A-Z]/.test(formData.password),
+                        pass: /[A-Z]/.test(formData?.password),
                       },
                       {
                         label: "One lowercase letter",
-                        pass: /[a-z]/.test(formData.password),
+                        pass: /[a-z]/.test(formData?.password),
                       },
                       {
                         label: "One number",
-                        pass: /[0-9]/.test(formData.password),
+                        pass: /[0-9]/.test(formData?.password),
                       },
                       {
                         label: "One special character",
-                        pass: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password),
+                        pass: /[!@#$%^&*(),.?":{}|<>]/.test(formData?.password),
                       },
                     ].map((rule, i) => (
                       <li
@@ -343,15 +343,15 @@ export default function SchoolRegisterPage() {
                 <Input
                   id="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
-                  value={formData.confirmPassword}
+                  value={formData?.confirmPassword}
                   onChange={handleChange}
                   placeholder="Re-enter your password"
                   className={`pl-11 pr-11 h-12 rounded-lg border-slate-300 focus:border-indigo-400 focus:ring-indigo-400/20 ${
-                    formData.confirmPassword &&
-                    formData.password !== formData.confirmPassword
+                    formData?.confirmPassword &&
+                    formData?.password !== formData?.confirmPassword
                       ? "border-red-400"
-                      : formData.confirmPassword &&
-                          formData.password === formData.confirmPassword
+                      : formData?.confirmPassword &&
+                          formData?.password === formData?.confirmPassword
                         ? "border-emerald-400"
                         : ""
                   }`}
@@ -373,15 +373,15 @@ export default function SchoolRegisterPage() {
               </div>
 
               {/* Match feedback */}
-              {formData.confirmPassword && (
+              {formData?.confirmPassword && (
                 <p
                   className={`text-xs flex items-center gap-1.5 ${
-                    formData.password === formData.confirmPassword
+                    formData?.password === formData?.confirmPassword
                       ? "text-emerald-600"
                       : "text-red-500"
                   }`}
                 >
-                  {formData.password === formData.confirmPassword ? (
+                  {formData?.password === formData?.confirmPassword ? (
                     <>
                       <CheckCircle2 className="h-3.5 w-3.5" /> Passwords match
                     </>
@@ -413,7 +413,7 @@ export default function SchoolRegisterPage() {
               disabled={
                 loading ||
                 !isPasswordValid ||
-                formData.password !== formData.confirmPassword
+                formData?.password !== formData?.confirmPassword
               }
             >
               {loading ? "Creating account..." : "Register School"}

@@ -16,17 +16,22 @@ export function formatDateForInput(
 }
 
 export function getLastFourSessions(): string[] {
-  const currentYear = new Date().getFullYear(); // 2026
-  const currentSession = `${currentYear - 1}-${currentYear}`; // "2025-2026"
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1–12
+
+  // New session starts in April (month 4)
+  // Jan–Mar → session started previous year; Apr–Dec → session started this year
+  const sessionStartYear = currentMonth >= 4 ? currentYear : currentYear - 1;
 
   const sessions: string[] = [];
   for (let i = 0; i < 4; i++) {
-    const start = currentYear - 1 - i;
-    const end = currentYear - i;
+    const start = sessionStartYear - i;
+    const end = start + 1;
     sessions.push(`${start}-${end}`);
   }
 
-  return sessions; // ["2025-2026", "2024-2025", "2023-2024", "2022-2023"]
+  return sessions;
 }
 
 // Helper function - put this outside your component
