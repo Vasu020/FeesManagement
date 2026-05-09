@@ -404,8 +404,6 @@ const Dashboard = () => {
         fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
         color: C.text,
         padding: "28px 24px",
-        maxWidth: 1280,
-        margin: "0 auto",
       }}
     >
       {/* Page header */}

@@ -5,12 +5,13 @@ import {
   PencilLine,
   Plus,
   Trash2,
+  Landmark ,
   IndianRupee,
   GraduationCap,
-  ReceiptText,
   LayoutList,
   ChevronRight,
   Sparkles,
+  ListCheck,
 } from "lucide-react";
 import axios from "axios";
 import { API_BASE_URL } from "@/AppComponents/Utilities/Constant";
@@ -78,7 +79,7 @@ const FeeCard = ({ fee, onEdit }: { fee: any; onEdit: (fee: any) => void }) => {
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-black flex items-center justify-center shadow-md shadow-gray-900">
-            <ReceiptText size={20} className="text-white" />
+            <ListCheck   size={20} className="text-white" />
           </div>
           <p className="text-sm font-semibold text-slate-800">
             {fee.classname}
@@ -203,7 +204,7 @@ const OtherCategoriesEditor = ({
               />
               <ChevronRight size={12} className="text-slate-300" />
               <div className="relative w-28 ">
-                <IndianRupee
+                <IndianRupee 
                   size={14}
                   className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
                 />
@@ -408,7 +409,7 @@ const FeesSettings = ({ openSheet, setOpenSheet }: any) => {
           <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-6 py-5">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-black flex items-center justify-center shadow-md shadow-gray-900">
-                <IndianRupee size={18} className="text-white" />
+                <Landmark  size={18} className="text-white" />
               </div>
               <div>
                 <h2 className="text-base font-bold text-slate-800">

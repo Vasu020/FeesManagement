@@ -5,6 +5,7 @@ import {
   Plus,
   PencilLine,
   GraduationCap,
+  School,
   Users,
   LayoutGrid,
   BookOpen,
@@ -306,7 +307,7 @@ const ClassSettings = ({ openSheet, setOpenSheet }: any) => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-black flex items-center justify-center shadow-md shadow-gray-900">
-                  <GraduationCap size={28} className="text-white" />
+                  <School size={28} className="text-white" />
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-slate-800">

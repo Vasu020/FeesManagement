@@ -6,7 +6,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-import { Settings, School, DollarSign, UserRoundCog } from "lucide-react";
+import { Settings, Newspaper, School, Landmark } from "lucide-react";
 
 import GeneralSettings from "./GeneralSettings";
 import ClassSettings from "./ClassSettings";
@@ -60,7 +60,7 @@ function SettingsPage() {
         >
           <CardHeader className="pb-4">
             <div className="w-12 h-12 rounded-2xl bg-zinc-900 flex items-center justify-center mb-4 shadow-lg shadow-gray-400">
-              <DollarSign className="h-7 w-7 text-white" />
+              <Landmark className="h-7 w-7 text-white" />
             </div>
             <CardTitle className="text-xl">Fees Structure</CardTitle>
             <CardDescription>
@@ -76,7 +76,7 @@ function SettingsPage() {
         >
           <CardHeader className="pb-4">
             <div className="w-12 h-12 rounded-2xl bg-zinc-900 flex items-center justify-center mb-4 shadow-lg shadow-gray-400">
-              <UserRoundCog className="h-7 w-7 text-white" />
+              <Newspaper className="h-7 w-7 text-white" />
             </div>
             <CardTitle className="text-xl">Fee Rules</CardTitle>
             <CardDescription>

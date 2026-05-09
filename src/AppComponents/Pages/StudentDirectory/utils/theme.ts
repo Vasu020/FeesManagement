@@ -13,6 +13,7 @@ export const T = {
   accent:         "#4F46E5",
   accentBg:       "#EEF2FF",
   accentLight:    "#C7D2FE",
+  accentBorder:   "#A5B4FC",   // ← added
 
   ok:             "#027A48",
   okBg:           "#ECFDF3",
@@ -31,6 +32,10 @@ export const T = {
   info:           "#026AA2",
   infoBg:         "#F0F9FF",
   infoBorder:     "#B9E6FE",
+
+  border:         "#E4E7EC",   // ← default border (mirrors `line`)
+  borderStrong:   "#C4C9D4",   // ← slightly darker for emphasis
+  borderSubtle:   "#F0F2F5",   // ← barely-there dividers
 
   shadowSm: "0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.1)",
   shadowMd: "0 2px 4px rgba(16,24,40,.06), 0 4px 8px rgba(16,24,40,.08)",
