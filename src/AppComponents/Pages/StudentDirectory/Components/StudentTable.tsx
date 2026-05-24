@@ -23,7 +23,6 @@ const FeeBar = ({ student }: { student: Partial<Student> }) => {
   const pct = calcFeePct(student);
   const balance = Math.max(eff - paid, 0);
   const clear = balance === 0 && eff > 0;
-  const [showTip, setShowTip] = useState(false);
 
   const hasConcessions =
     Number(student.concession ?? 0) > 0 || Number(student.scholarship ?? 0) > 0;

@@ -11,18 +11,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  User,
-  BookOpen,
-  Wallet,
-  AlertCircle,
-  Save,
-  Plus,
-} from "lucide-react";
+import { User, BookOpen, Wallet, AlertCircle, Save, Plus } from "lucide-react";
 import { T } from "../utils/theme";
 import { font } from "../utils/theme";
-import type { Student, ClassItem, StudentFormData } from "../types";
+import type { Student, ClassItem, FeeRule } from "../types";
 import { BASE_URL } from "../utils/helpers";
+import { Printer } from "lucide-react";
+import { printFeesReceipt } from "@/AppComponents/Hooks/printFeesReceipt";
 
 // ─── Shared within this file ──────────────────────────────────────────────────
 const Field = ({
@@ -63,7 +58,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "fees", label: "Fees", icon: <Wallet style={{ width: 13 }} /> },
 ];
 
-const EMPTY: StudentFormData = {
+const rawStudent: Student = {
   first_name: "",
   last_name: "",
   father_name: "",
@@ -72,6 +67,7 @@ const EMPTY: StudentFormData = {
   contact_phone: "",
   email: "",
   total_fees: 0,
+  student_id: 0,
   fees_paid: 0,
   balance: 0,
   late_fees_charges: 0,
@@ -82,7 +78,6 @@ const EMPTY: StudentFormData = {
   enrollment_date: "",
   status: "active",
   standard: "",
-  standard_id: "",
   roll_no: 0,
   active_date: "",
   inactive_date: "",
@@ -96,7 +91,7 @@ export interface StudentDialogProps {
   editingStudent: Student | null;
   classes: ClassItem[];
   students: Student[];
-  onSubmit: (data: StudentFormData, editingId?: number) => Promise<void>;
+  onSubmit: (data: Student, editingId?: number) => Promise<void>;
   error: string;
   setError: (e: string) => void;
 }
@@ -113,25 +108,15 @@ export const StudentDialog = ({
   setError,
 }: StudentDialogProps) => {
   const [tab, setTab] = useState<TabId>("personal");
-  const [form, setForm] = useState<StudentFormData>(EMPTY);
+  const [form, setForm] = useState<Student>(rawStudent);
   const [loading, setLoading] = useState(false);
   const [payingamount, setPayingamount] = useState<string>("0");
-  const [feeRule, setFeeRule] = useState(null);
-
-  useEffect(() => {
-    setForm(
-      editingStudent ? { ...EMPTY, ...editingStudent, standard_id: "" } : EMPTY,
-    );
-    setTab("personal");
-    setError("");
-  }, [editingStudent, open]);
+  const [feeRule, setFeeRule] = useState<FeeRule | null>(null);
 
   useEffect(() => {
     const fetchFeeRule = async () => {
       try {
-        const res = await fetch(
-          `${BASE_URL}?type=late_fee`
-        );
+        const res = await fetch(`${BASE_URL}?type=late_fee`);
         const data = await res.json();
         if (data.success && data.data.length > 0) {
           setFeeRule(data.data[0]);
@@ -142,6 +127,60 @@ export const StudentDialog = ({
     };
     fetchFeeRule();
   }, []);
+
+  useEffect(() => {
+    const today = new Date();
+    const dayOfMonth = today.getDate();
+    const dueDate = new Date(today);
+    dueDate.setDate(feeRule?.due_day_of_month ?? 1);
+
+    const todayStr = today.toISOString().split("T")[0];
+    const dueDateStr = dueDate.toISOString().split("T")[0];
+
+    if (editingStudent) {
+      const dueDay = feeRule?.due_day_of_month ?? 1;
+      const graceDays = feeRule?.grace_days ?? 0;
+      const lateFeeAmount = Number(feeRule?.late_fee_amount ?? 0);
+
+      const existingDueDate = editingStudent.due_date
+        ? new Date(editingStudent.due_date)
+        : null;
+
+      const monthsOverdue = existingDueDate
+        ? (today.getFullYear() - existingDueDate.getFullYear()) * 12 +
+          (today.getMonth() - existingDueDate.getMonth())
+        : 0;
+      const currentMonthLate = dayOfMonth > dueDay + graceDays ? 1 : 0;
+      const totalOverdueMonths =
+        Math.max(0, monthsOverdue - 1) + currentMonthLate;
+
+      const calculatedLateFees = totalOverdueMonths * lateFeeAmount;
+
+      const newDueDate = new Date(today);
+      newDueDate.setDate(dueDay);
+      const newDueDateStr = newDueDate.toISOString().split("T")[0];
+
+      setForm({
+        ...rawStudent,
+        ...editingStudent,
+        due_date: newDueDateStr,
+        late_fees_charges: calculatedLateFees,
+      });
+    } else {
+      setForm({
+        ...rawStudent,
+        enrollment_date: todayStr,
+        due_date: dueDateStr,
+        late_fees_charges:
+          dayOfMonth >
+          (feeRule?.due_day_of_month ?? 1) + (feeRule?.grace_days ?? 0)
+            ? Number(feeRule?.late_fee_amount ?? 0)
+            : 0,
+      });
+    }
+    setTab("personal");
+    setError("");
+  }, [editingStudent, open, feeRule]);
 
   function calculateLateFee(
     dueDate: string | null, // student's fee due date from DB
@@ -183,22 +222,24 @@ export const StudentDialog = ({
   const onInput = (e: React.ChangeEvent<HTMLInputElement>) =>
     set(e.target.name, e.target.value);
 
-  const onClassChange = (classId: string) => {
-    const cls = classes.find((c: any) => c.id.toString() === classId);
+  const onClassChange = (selectedClassname: string) => {
+    const cls = classes.find((c: any) => c.classname === selectedClassname);
     if (!cls) return;
+
     const maxRoll =
       students
         .filter((s) => s.standard === cls.classname)
         .reduce((m, s) => Math.max(m, s.roll_no), 0) + 1;
+
     const tf =
       parseFloat(cls.tutions) * 12 +
       parseFloat(cls.admission) +
       parseFloat(cls.annual) +
       parseFloat(cls.others);
+
     setForm((p) => ({
       ...p,
-      standard: cls.classname,
-      standard_id: cls.id.toString(),
+      standard: cls.classname, // ← This is enough
       roll_no: maxRoll,
       total_fees: tf,
       balance: tf,
@@ -232,6 +273,7 @@ export const StudentDialog = ({
         }}
       >
         {/* ── Header + Tab nav ── */}
+
         <div
           style={{
             padding: "18px 24px 0",
@@ -239,10 +281,11 @@ export const StudentDialog = ({
             flexShrink: 0,
           }}
         >
+          {/* Title row */}
           <div
             style={{
               display: "flex",
-              alignItems: "center",
+              alignItems: "flex-start",
               justifyContent: "space-between",
               marginBottom: 14,
             }}
@@ -266,6 +309,7 @@ export const StudentDialog = ({
                   fontWeight: 800,
                   color: T.text,
                   margin: 0,
+                  padding: 0,
                 }}
               >
                 {editingStudent
@@ -273,8 +317,41 @@ export const StudentDialog = ({
                   : "Add New Student"}
               </DialogTitle>
             </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                paddingRight: 32,
+              }}
+            >
+              {editingStudent && (
+                <button
+                  title="Print Fees Receipt"
+                  onClick={() => printFeesReceipt(editingStudent)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 9px",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    background: "none",
+                    border: `1px solid ${T.border}`,
+                    color: T.muted,
+                    fontSize: 11,
+                    fontWeight: 500,
+                  }}
+                >
+                  <Printer size={12} />
+                  Receipt
+                </button>
+              )}
+            </div>
           </div>
 
+          {/* Tabs */}
           <div style={{ display: "flex" }}>
             {TABS.map((t) => (
               <button
@@ -320,7 +397,7 @@ export const StudentDialog = ({
               <Field label="First Name" required>
                 <Input
                   name="first_name"
-                  value={form.first_name}
+                  value={form?.first_name}
                   onChange={onInput}
                   placeholder="e.g. Arjun"
                   style={inp}
@@ -329,7 +406,7 @@ export const StudentDialog = ({
               <Field label="Last Name">
                 <Input
                   name="last_name"
-                  value={form.last_name}
+                  value={form?.last_name}
                   onChange={onInput}
                   placeholder="e.g. Sharma"
                   style={inp}
@@ -339,7 +416,7 @@ export const StudentDialog = ({
                 <Field label="Father's Name" required>
                   <Input
                     name="father_name"
-                    value={form.father_name}
+                    value={form?.father_name}
                     onChange={onInput}
                     placeholder="e.g. Ramesh Sharma"
                     style={inp}
@@ -351,7 +428,7 @@ export const StudentDialog = ({
                   <Input
                     name="email"
                     type="email"
-                    value={form.email}
+                    value={form?.email}
                     onChange={onInput}
                     placeholder="e.g. arjun@example.com"
                     style={inp}
@@ -362,7 +439,7 @@ export const StudentDialog = ({
                 <Input
                   name="contact_phone"
                   type="tel"
-                  value={form.contact_phone}
+                  value={form?.contact_phone}
                   onChange={onInput}
                   placeholder="10-digit"
                   style={inp}
@@ -372,7 +449,7 @@ export const StudentDialog = ({
                 <Input
                   name="date_of_birth"
                   type="date"
-                  value={form.date_of_birth}
+                  value={form?.date_of_birth}
                   onChange={onInput}
                   style={inp}
                 />
@@ -380,7 +457,7 @@ export const StudentDialog = ({
               <div style={{ gridColumn: "span 2" }}>
                 <Field label="Gender">
                   <Select
-                    value={form.gender}
+                    value={form?.gender}
                     onValueChange={(v) => set("gender", v)}
                   >
                     <SelectTrigger style={{ ...inp, width: "100%" }}>
@@ -403,7 +480,7 @@ export const StudentDialog = ({
                 <Input
                   name="enrollment_date"
                   type="date"
-                  value={form.enrollment_date}
+                  value={form?.enrollment_date}
                   onChange={onInput}
                   style={inp}
                 />
@@ -411,14 +488,16 @@ export const StudentDialog = ({
               <Field label="Standard / Class" required>
                 <Select
                   onValueChange={onClassChange}
-                  value={form.standard_id || form.standard}
+                  value={form?.standard || ""} // ← classname
                 >
                   <SelectTrigger style={{ ...inp, width: "100%" }}>
                     <SelectValue placeholder="Select class" />
                   </SelectTrigger>
                   <SelectContent>
                     {classes.map((c: any) => (
-                      <SelectItem key={c.id} value={c.id.toString()}>
+                      <SelectItem key={c.id} value={c.classname}>
+                        {" "}
+                        {/* ← Use classname here */}
                         {c.classname}
                       </SelectItem>
                     ))}
@@ -429,14 +508,14 @@ export const StudentDialog = ({
                 <Input
                   name="roll_no"
                   type="number"
-                  value={form.roll_no}
+                  value={form?.roll_no}
                   onChange={onInput}
                   style={inp}
                 />
               </Field>
               <Field label="Status">
                 <Select
-                  value={form.status}
+                  value={form?.status}
                   onValueChange={(v) => set("status", v)}
                 >
                   <SelectTrigger style={{ ...inp, width: "100%" }}>
@@ -473,27 +552,42 @@ export const StudentDialog = ({
           {/* Fees */}
           {tab === "fees" &&
             (() => {
-              const total = parseFloat(`${form.total_fees}`) || 0;
-              const paid = parseFloat(`${form.fees_paid}`) || 0;
-              const balance = total - paid;
-              const pct = total > 0 ? Math.round((paid / total) * 100) : 0;
-
-              const lateFee = calculateLateFee(form.due_date, feeRule);
+              const total = parseFloat(`${form?.total_fees}`) || 0;
+              const paid = parseFloat(`${form?.fees_paid}`) || 0;
+              const lateFee = calculateLateFee(form?.due_date, feeRule);
+              const effective_total = total + lateFee;
+              const balance = effective_total - paid;
+              const pct =
+                effective_total > 0
+                  ? Math.round((paid / effective_total) * 100)
+                  : 0;
 
               const payAmt = parseFloat(payingamount || "0") || 0;
               const previewPaid = Math.min(
                 Math.round((paid + payAmt) * 100) / 100,
-                total,
+                effective_total,
               );
               const previewBalance =
-                Math.round((total - previewPaid) * 100) / 100;
+                Math.round((effective_total - previewPaid) * 100) / 100;
               const previewPct =
-                total > 0 ? Math.round((previewPaid / total) * 100) : 0;
+                effective_total > 0
+                  ? Math.round((previewPaid / effective_total) * 100)
+                  : 0;
               const hasPreview = payAmt > 0;
 
               const fmt = (n: number) => `₹${n.toLocaleString("en-IN")}`;
               const fmt2 = (n: number) =>
                 `₹${(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+
+              // ✅ FIX: Apply payment into form state
+              const handleApplyPayment = () => {
+                if (payAmt <= 0) return;
+                const newPaid = Math.min(paid + payAmt, effective_total);
+                onInput({
+                  target: { name: "fees_paid", value: String(newPaid) },
+                } as any);
+                setPayingamount("0");
+              };
 
               return (
                 <div
@@ -547,12 +641,7 @@ export const StudentDialog = ({
                   </div>
 
                   {/* Progress Bar */}
-                  <div
-                    style={{
-                      borderRadius: 10,
-                      padding: "12px 14px",
-                    }}
-                  >
+                  <div style={{ borderRadius: 10, padding: "12px 14px" }}>
                     <div
                       style={{
                         display: "flex",
@@ -593,119 +682,165 @@ export const StudentDialog = ({
                     </div>
                   </div>
 
-                  {/* Late Fees */}
-                  {/* Late Fees Charges */}
-                  <div
-                    className={`flex items-center justify-between px-4 py-3 rounded-xl border ${
-                      lateFee > 0
-                        ? "bg-amber-50 border-amber-200"
-                        : "bg-slate-50 border-slate-200"
-                    }`}
-                  >
-                    <span className="text-sm font-semibold text-slate-700">
-                      Late Fees Charges
-                    </span>
-                    <span
-                      className={`text-sm font-bold ${lateFee > 0 ? "text-amber-600" : "text-slate-400"}`}
+                  {/* ✅ REDESIGNED: Late Fee — inline pill style */}
+                  {lateFee > 0 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        background: "#FFFBEB",
+                        border: "0.5px solid #FCD34D",
+                      }}
                     >
-                      {lateFee > 0
-                        ? `${fmt(lateFee)} — applied automatically`
-                        : `₹0.00 — no late fee`}
-                    </span>
-                  </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 500,
+                            color: T.text,
+                          }}
+                        >
+                          Late Fee
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 9,
+                            fontWeight: 600,
+                            padding: "2px 7px",
+                            borderRadius: 20,
+                            background: "#FEF3C7",
+                            color: "#92400E",
+                            border: "0.5px solid #FCD34D",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                          }}
+                        >
+                          Auto-applied
+                        </span>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: "#B45309",
+                        }}
+                      >
+                        {fmt2(lateFee)}
+                      </span>
+                    </div>
+                  )}
 
-                  {/* Concession + Scholarship */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 8,
-                    }}
-                  >
-                    {[
+                  {/* Concession + Scholarship — only show the ones with a value > 0 */}
+                  {(() => {
+                    const concession = parseFloat(`${form?.concession}`) || 0;
+                    const scholarship = parseFloat(`${form?.scholarship}`) || 0;
+                    const items = [
                       {
                         key: "concession",
                         label: "Concession",
-                        bg: "#F5F3FF",
-                        border: "#DDD6FE",
-                        labelColor: "#6D28D9",
-                        badgeBg: "#EDE9FE",
-                        badgeColor: "#5B21B6",
-                        badgeBorder: "#C4B5FD",
+                        value: concession,
+                        iconColor: "#7C3AED",
+                        bg: "#FAF5FF",
+                        border: "#E9D5FF",
+                        valueColor: "#6D28D9",
                       },
                       {
                         key: "scholarship",
                         label: "Scholarship",
-                        bg: "#ECFDF5",
-                        border: "#A7F3D0",
-                        labelColor: "#065F46",
-                        badgeBg: "#D1FAE5",
-                        badgeColor: "#065F46",
-                        badgeBorder: "#6EE7B7",
+                        value: scholarship,
+                        iconColor: "#059669",
+                        bg: "#F0FDF4",
+                        border: "#BBF7D0",
+                        valueColor: "#065F46",
                       },
-                    ].map(
-                      ({
-                        key,
-                        label,
-                        bg,
-                        border,
-                        labelColor,
-                        badgeBg,
-                        badgeColor,
-                        badgeBorder,
-                      }) => (
-                        <div
-                          key={key}
-                          style={{
-                            background: bg,
-                            border: `0.5px solid ${border}`,
-                            borderRadius: 10,
-                            padding: "12px 14px",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                          }}
-                        >
-                          <div>
+                    ].filter((item) => item.value > 0);
+
+                    if (items.length === 0) return null;
+
+                    return (
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            items.length === 1 ? "1fr" : "1fr 1fr",
+                          gap: 8,
+                        }}
+                      >
+                        {items.map(
+                          ({
+                            key,
+                            label,
+                            value,
+                            iconColor,
+                            bg,
+                            border,
+                            valueColor,
+                          }) => (
                             <div
+                              key={key}
                               style={{
-                                fontSize: 10,
-                                fontWeight: 600,
-                                textTransform: "uppercase",
-                                letterSpacing: "0.05em",
-                                color: labelColor,
-                                marginBottom: 3,
+                                background: bg,
+                                border: `0.5px solid ${border}`,
+                                borderRadius: 10,
+                                padding: "12px 14px",
                               }}
                             >
-                              {label}
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  marginBottom: 6,
+                                }}
+                              >
+                                <span style={{ fontSize: 8, color: iconColor }}>
+                                  ✦
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: 600,
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.06em",
+                                    color: iconColor,
+                                  }}
+                                >
+                                  {label}
+                                </span>
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 16,
+                                  fontWeight: 700,
+                                  color: valueColor,
+                                }}
+                              >
+                                {fmt2(value)}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  color: T.muted,
+                                  marginTop: 2,
+                                }}
+                              >
+                                Applied externally
+                              </div>
                             </div>
-                            <div
-                              style={{
-                                fontSize: 14,
-                                fontWeight: 600,
-                                color: T.text,
-                              }}
-                            >
-                              {fmt2(form[key])}
-                            </div>
-                          </div>
-                          <span
-                            style={{
-                              fontSize: 10,
-                              padding: "3px 9px",
-                              borderRadius: 20,
-                              fontWeight: 500,
-                              background: badgeBg,
-                              color: badgeColor,
-                              border: `0.5px solid ${badgeBorder}`,
-                            }}
-                          >
-                            External
-                          </span>
-                        </div>
-                      ),
-                    )}
-                  </div>
+                          ),
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <div style={{ height: "0.5px", background: T.border }} />
 
@@ -747,7 +882,7 @@ export const StudentDialog = ({
                         display: "grid",
                         gridTemplateColumns: "1fr 1fr",
                         gap: 10,
-                        marginBottom: hasPreview ? 10 : 0,
+                        marginBottom: 10,
                       }}
                     >
                       <Field label="Amount Paying (₹)">
@@ -764,25 +899,26 @@ export const StudentDialog = ({
                         <Input
                           name="last_payment_date"
                           type="date"
-                          value={form.last_payment_date}
+                          value={form?.last_payment_date}
                           onChange={onInput}
                           style={inp}
                         />
                       </Field>
                     </div>
 
-                    {/* Live Preview Chips */}
+                    {/* Live Preview */}
                     {hasPreview && (
                       <div
                         style={{
                           display: "grid",
                           gridTemplateColumns: "1fr 1fr 1fr",
                           gap: 8,
+                          marginBottom: 10,
                         }}
                       >
                         {[
                           { label: "Fees Paid →", val: fmt(previewPaid) },
-                          { label: "Balance →", val: fmt(previewBalance) }, // ← use previewBalance, not total - previewPaid inline
+                          { label: "Balance →", val: fmt(previewBalance) },
                           { label: "Progress →", val: `${previewPct}%` },
                         ].map(({ label, val }) => (
                           <div
@@ -819,6 +955,26 @@ export const StudentDialog = ({
                         ))}
                       </div>
                     )}
+
+                    {/* ✅ FIX: Apply Payment button commits payingamount → fees_paid */}
+                    {hasPreview && (
+                      <button
+                        onClick={handleApplyPayment}
+                        style={{
+                          width: "100%",
+                          padding: "9px 0",
+                          borderRadius: 8,
+                          background: T.accent,
+                          color: "#fff",
+                          fontWeight: 600,
+                          fontSize: 13,
+                          border: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Apply ₹{payAmt.toLocaleString("en-IN")} to Account
+                      </button>
+                    )}
                   </div>
 
                   {/* Dates */}
@@ -833,7 +989,7 @@ export const StudentDialog = ({
                       <Input
                         name="last_payment_date"
                         type="date"
-                        value={form.last_payment_date}
+                        value={form?.last_payment_date}
                         readOnly
                         style={{
                           ...inp,
@@ -847,11 +1003,12 @@ export const StudentDialog = ({
                       <Input
                         name="due_date"
                         type="date"
-                        value={form.due_date}
+                        value={form?.due_date}
                         onChange={onInput}
                         style={inp}
                       />
                     </Field>
+                   
                   </div>
                 </div>
               );
