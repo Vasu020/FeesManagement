@@ -15,13 +15,14 @@ export const formatStudentDates = (s: Student): Student => ({
   due_date: fmtDate(s.due_date),
 });
 
-export const calcEffective = (s: Partial<Student>): number =>
-  Math.max(
-    Number(s.total_fees ?? 0) -
-      Number(s.concession ?? 0) -
-      Number(s.scholarship ?? 0),
-    0,
-  );
+export // calcEffective should be:
+const calcEffective = (student: Partial<Student>) => {
+  const total = Number(student.total_fees ?? 0);
+  const concession = Number(student.concession ?? 0);
+  const scholarship = Number(student.scholarship ?? 0);
+  const lateFees = Number(student.late_fees_charges ?? 0);
+  return total - concession - scholarship + lateFees;
+};
 
 export const calcFeePct = (s: Partial<Student>): number => {
   const eff = calcEffective(s);

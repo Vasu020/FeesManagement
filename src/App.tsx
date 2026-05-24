@@ -12,6 +12,8 @@ import ProtectedLayout from "./ProtectedLayout";
 import SchoolRegisterPage from "./AppComponents/SchoolRegisterPage";
 import ResetPassword from "./AppComponents/ResetPassword";
 import ManageUsers from "./AppComponents/Pages/ManageUsers";
+import { Toaster } from "sonner";
+
 
 // Helper: only let admins through
 function AdminRoute({ children }:any) {
@@ -21,6 +23,8 @@ function AdminRoute({ children }:any) {
 
 function App() {
   return (
+    <>
+    <Toaster position="top-right" richColors />
     <Router>
       <Routes>
         {/* Public */}
@@ -62,6 +66,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
+     </>
   );
 }
 

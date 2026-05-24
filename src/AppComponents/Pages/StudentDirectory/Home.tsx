@@ -26,7 +26,6 @@ import type {
   DiscountMode,
   LeaveRejoinMode,
   Student,
-  StudentFormData,
 } from "./types";
 import { API_BASE_URL } from "@/AppComponents/Utilities/Constant";
 import { font, T } from "./utils/theme";
@@ -66,7 +65,6 @@ const Home = () => {
   } | null>(null);
 
   // const { loading, success, sendReminder } = useReminderNotify();
-
 
   // ── Fetch ──
   useEffect(() => {
@@ -110,7 +108,6 @@ const Home = () => {
   const openEdit = (s: Student) => {
     setEditingStudent({
       ...formatStudentDates(s),
-      standard_id: "",
       active_date: "",
       inactive_date: "",
       current_session: "",
@@ -118,21 +115,34 @@ const Home = () => {
     setStudentDlg(true);
   };
 
-  const handleStudentSubmit = async (
-    data: StudentFormData,
-    editingId?: number,
-  ) => {
+  const handleStudentSubmit = async (data: Student, editingId?: number) => {
+    // Validate standard is selected
+    if (!data.standard || data.standard === "") {
+      setError("Please select a class/standard before saving.");
+      return;
+    }
+
+    const lateFee = Number(data.late_fees_charges) || 0;
+    const totalFees = Number(data.total_fees) || 0;
+    const feesPaid = Number(data.fees_paid) || 0;
+    const concession = Number(data.concession) || 0;
+    const scholarship = Number(data.scholarship) || 0;
+
+    const effectiveTotal = totalFees + lateFee;
+    const computedBalance = Math.max(effectiveTotal - feesPaid, 0);
+
     const payload: any = {
       ...data,
       school_id: schoolId,
-      total_fees: Number(data.total_fees) || 0,
-      fees_paid: Number(data.fees_paid) || 0,
-      balance: Number(data.balance) || 0,
-      late_fees_charges: Number(data.late_fees_charges) || 0,
-      concession: Number(data.concession) || 0,
-      scholarship: Number(data.scholarship) || 0,
+      total_fees: totalFees,
+      fees_paid: feesPaid,
+      balance: computedBalance,
+      late_fees_charges: lateFee,
+      concession,
+      scholarship,
       roll_no: Number(data.roll_no) || 0,
     };
+
     try {
       const res: any = editingId
         ? await axios.put(`${API_BASE_URL}/api/students/${editingId}`, payload)

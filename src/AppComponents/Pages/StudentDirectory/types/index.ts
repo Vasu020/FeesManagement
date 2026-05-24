@@ -18,11 +18,24 @@ export interface Student {
   enrollment_date: string;
   status: "active" | "inactive";
   standard: string;
-  standard_id: string;
   roll_no: number;
   active_date: string;
   inactive_date: string;
   current_session: string;
+}
+export interface FeeRule {
+  id: number;
+  rule_type: string;
+  preset_name: string | null;
+  value_type: string | null;
+  value: string | null;
+  applicable_classes: string | null;
+  due_day_of_month: number;
+  grace_days: number;
+  late_fee_amount: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ClassItem {
@@ -34,9 +47,6 @@ export interface ClassItem {
   others: string;
 }
 
-export interface StudentFormData extends Omit<Student, "student_id"> {
-  standard_id: string;
-}
 
 export type LeaveRejoinMode = "leave" | "rejoin";
 export type DiscountMode = "scholarship" | "concession";
