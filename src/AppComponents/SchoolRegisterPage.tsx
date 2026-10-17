@@ -21,8 +21,7 @@ import {
   EyeOff,
   CheckCircle2,
 } from "lucide-react";
-
-const BASE_URL = "http://localhost:5000/api/schools";
+import { registerSchool } from "./Utilities/apis/api";
 
 // ─────────────────────────────────────────
 // PASSWORD VALIDATION
@@ -98,37 +97,28 @@ export default function SchoolRegisterPage() {
     }
 
     setLoading(true);
+
+    // ...inside handleSubmit, after the client-side guards and setLoading(true):
     try {
-      const response = await fetch(`${BASE_URL}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          school_name: formData?.name,
-          short_name: formData?.short_name,
-          email: formData?.email,
-          password: formData?.password,
-          // phone: formData?.phone || null,
-        }),
+      const data = await registerSchool({
+        school_name: formData.name,
+        short_name: formData.short_name,
+        email: formData.email,
+        password: formData.password,
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Handle duplicate email from backend
-        if (response.status === 409) {
-          return setError("This email is already registered. Please sign in.");
-        }
-        return setError(
-          data.message || "Something went wrong. Please try again.",
-        );
-      }
-
       setSuccess(
-        `School "${data.school_name}" registered successfully! Redirecting...`,
+        `School "${data.school.school_name}" registered successfully! Redirecting...`,
       );
       setTimeout(() => navigate("/"), 2000);
-    } catch (err) {
-      setError("Cannot connect to the server. Please try again later.");
+    } catch (err: any) {
+      if (err.response?.status === 409) {
+        return setError("This email is already registered. Please sign in.");
+      }
+      setError(
+        err.response?.data?.message ||
+          "Cannot connect to the server. Please try again later.",
+      );
     } finally {
       setLoading(false);
     }
@@ -419,7 +409,7 @@ export default function SchoolRegisterPage() {
               {loading ? "Creating account..." : "Register School"}
             </Button>
           </form>
-         
+
           <p className="mt-8 text-center text-sm text-slate-600">
             Already have an account?{" "}
             <Button

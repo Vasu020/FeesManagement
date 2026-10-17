@@ -1,13 +1,12 @@
 import { useState, useEffect } from "react";
 import { UserPlus, Trash2, AlertCircle, CheckCircle2, Eye, EyeOff, Users, UserRoundX, ShieldCheck, Search } from "lucide-react";
-
-const BASE_URL = "http://localhost:5000/api/users";
+import { usersApi, type User } from "../Utilities/apis/api";
 
 export default function ManageUsers() {
   const school   = JSON.parse(localStorage.getItem("school") || "{}");
   const schoolId = school.id;
 
-  const [users, setUsers]       = useState([]);
+  const [users, setUsers]       = useState<User[]>([]);
   const [name, setName]         = useState("");
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
@@ -19,9 +18,8 @@ export default function ManageUsers() {
 
   const fetchUsers = async () => {
     try {
-      const res  = await fetch(`${BASE_URL}?school_id=${schoolId}`);
-      const data = await res.json();
-      if (res.ok) setUsers(data.data);
+      const response = await usersApi.getAll(schoolId);
+      setUsers(response.data);
     } catch {
       console.error("Failed to fetch users");
     }
@@ -36,18 +34,18 @@ export default function ManageUsers() {
     if (password.length < 8) return setError("Password must be at least 8 characters.");
     setLoading(true);
     try {
-      const res  = await fetch(BASE_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ school_id: schoolId, name, email, password, role: "user" }),
+      await usersApi.create({
+        school_id: schoolId,
+        name,
+        email,
+        password,
+        role: "user",
       });
-      const data = await res.json();
-      if (!res.ok) return setError(data.message);
       setSuccess(`User "${name}" created successfully.`);
       setName(""); setEmail(""); setPassword("");
       fetchUsers();
-    } catch {
-      setError("Cannot connect to server.");
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Cannot connect to server.");
     } finally {
       setLoading(false);
     }
@@ -56,10 +54,10 @@ export default function ManageUsers() {
   const handleDelete = async (id: number, userName: string) => {
     if (!confirm(`Delete user "${userName}"?`)) return;
     try {
-      await fetch(`${BASE_URL}/${id}`, { method: "DELETE" });
+      await usersApi.remove(id);
       setUsers((prev) => prev.filter((u: any) => u.id !== id));
-    } catch {
-      setError("Failed to delete user.");
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Failed to delete user.");
     }
   };
 

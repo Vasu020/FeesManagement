@@ -13,10 +13,9 @@ import {
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import axios from "axios";
 import { useAppDispatch } from "../AppStore/store";
 import { setStudents } from "../AppStore/student";
-import { API_BASE_URL } from "./Utilities/Constant";
+import { studentsApi } from "./Utilities/apis/api";
 
 const navItems = [
   { name: "Home", path: "/home", icon: Home, adminOnly: false },
@@ -45,9 +44,9 @@ const Sidebar = () => {
   useEffect(() => {
     const fetchStudents = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/api/students`);
-        if (response.data.status === "success") {
-          dispatch(setStudents(response.data.data));
+        const res = await studentsApi.getAll();
+        if (res.status === "success") {
+          dispatch(setStudents(res.data));
         }
       } catch (err) {
         console.error("Failed to fetch students:", err);

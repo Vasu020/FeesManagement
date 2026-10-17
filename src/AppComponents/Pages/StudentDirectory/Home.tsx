@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo } from "react";
-import axios from "axios";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -27,7 +26,6 @@ import type {
   LeaveRejoinMode,
   Student,
 } from "./types";
-import { API_BASE_URL } from "@/AppComponents/Utilities/Constant";
 import { font, T } from "./utils/theme";
 import {
   ConfigureDiscountDialog,
@@ -35,6 +33,7 @@ import {
   PromoteDialog,
 } from "./Components/Dialog";
 import { StudentDialog } from "./Components/Studentdialog";
+import { classesApi, studentsApi } from "@/AppComponents/Utilities/apis/api";
 // import { useReminderNotify } from "@/AppComponents/Hooks/useReminderNotify";
 
 const Home = () => {
@@ -71,11 +70,21 @@ const Home = () => {
     (async () => {
       try {
         const [sr, cr] = await Promise.all([
-          axios.get(`${API_BASE_URL}/api/students?school_id=${schoolId}`),
-          axios.get(`${API_BASE_URL}/api/classes?school_id=${schoolId}`),
+          studentsApi.getAll(schoolId),
+          classesApi.getAll(schoolId),
         ]);
-        if (sr.data.status === "success") setStudents(sr.data.data);
-        if (cr.data.status === "success") setClasses(cr.data.data);
+        if (sr.status === "success") setStudents(sr.data);
+        if (cr.status === "success")
+          setClasses(
+            cr.data.map((classData) => ({
+              id: classData.id ?? 0,
+              classname: classData.classname,
+              tutions: String(classData.tutions ?? ""),
+              admission: String(classData.admission ?? ""),
+              annual: String(classData.annual ?? ""),
+              others: String(classData.others ?? ""),
+            })),
+          );
       } catch (e) {
         console.error(e);
       }
@@ -144,19 +153,19 @@ const Home = () => {
     };
 
     try {
-      const res: any = editingId
-        ? await axios.put(`${API_BASE_URL}/api/students/${editingId}`, payload)
-        : await axios.post(`${API_BASE_URL}/api/students`, payload);
+      const res = editingId
+        ? await studentsApi.update(editingId, payload)
+        : await studentsApi.create(payload);
 
-      if (res.data.status === "success") {
+      if (res.status === "success") {
         setStudents((p) =>
           editingId
-            ? p.map((s) => (s.student_id === editingId ? res.data.data : s))
-            : [...p, res.data.data],
+            ? p.map((s) => (s.student_id === editingId ? res.data : s))
+            : [...p, res.data],
         );
         setStudentDlg(false);
       } else {
-        setError(res.data.message);
+        setError(res.message);
       }
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed. Please try again.");
@@ -169,17 +178,14 @@ const Home = () => {
     newSession: string,
   ) => {
     try {
-      const res: any = await axios.put(
-        `${API_BASE_URL}/api/students/${studentId}`,
-        {
-          standard: newClass,
-          current_session: newSession,
-          active_date: moment().format("YYYY-MM-DD"),
-        },
-      );
-      if (res.data.status === "success")
+      const res = await studentsApi.update(studentId, {
+        standard: newClass,
+        current_session: newSession,
+        active_date: moment().format("YYYY-MM-DD"),
+      });
+      if (res.status === "success")
         setStudents((p) =>
-          p.map((s) => (s.student_id === studentId ? res.data.data : s)),
+          p.map((s) => (s.student_id === studentId ? res.data : s)),
         );
     } catch (e) {
       console.error(e);
@@ -191,42 +197,44 @@ const Home = () => {
     date: string,
     mode: LeaveRejoinMode,
   ) => {
-    const payload =
+    const payload: Partial<Student> =
       mode === "leave"
         ? { status: "inactive", inactive_date: date }
         : { status: "active", active_date: date, inactive_date: null };
     try {
-      const res: any = await axios.put(
-        `${API_BASE_URL}/api/students/${studentId}`,
-        payload,
-      );
-      if (res.data.status === "success")
+      const res = await studentsApi.update(studentId, payload);
+      if (res.status === "success")
         setStudents((p) =>
-          p.map((s) => (s.student_id === studentId ? res.data.data : s)),
+          p.map((s) => (s.student_id === studentId ? res.data : s)),
         );
     } catch (e) {
       console.error(e);
     }
   };
 
-  const handleDiscount = async (
-    studentId: number,
-    field: DiscountMode,
-    amount: number,
-  ) => {
-    try {
-      const res: any = await axios.put(
-        `${API_BASE_URL}/api/students/${studentId}`,
-        { [field]: amount },
+ const handleDiscount = async (
+  studentId: number,
+  field: DiscountMode,
+  amount: number,
+) => {
+  try {
+    const res = await studentsApi.update(studentId, {
+      [field]: amount,
+    } as Partial<Student>);
+
+    if (res.status === "success") {
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.student_id === studentId ? { ...s, ...res.data } : s,
+        ),
       );
-      if (res.data.status === "success")
-        setStudents((p) =>
-          p.map((s) => (s.student_id === studentId ? res.data.data : s)),
-        );
-    } catch (e) {
-      console.error(e);
     }
-  };
+  } catch (e: any) {
+    console.error(e);
+    // show it in whatever way your page reports errors, e.g.:
+    // setError(e.response?.data?.message || "Failed to update discount.");
+  }
+};
 
   return (
     <div

@@ -20,7 +20,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import taxImg from "../assets/TaxImg.jpg";
-import { API_BASE_URL } from "./Utilities/Constant";
+import { loginUser } from "./Utilities/apis/api";
 
 export default function SchoolLoginPage() {
   const navigate = useNavigate();
@@ -32,45 +32,37 @@ export default function SchoolLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   // ── Handle Login ───────────────────────
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
 
-    // Basic client-side validation
-    if (!email.trim()) return setError("Please enter your email.");
-    if (!password) return setError("Please enter your password.");
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setError("");
 
-    setIsLoading(true);
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/users/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password }),
-      });
+  if (!email.trim()) return setError("Please enter your email.");
+  if (!password) return setError("Please enter your password.");
 
-      const data = await res.json();
-      if (!res.ok) return setError(data.message);
+  setIsLoading(true);
+  try {
+    const user = await loginUser(email.trim(), password); // saves token internally
 
-      // Save user + school info
-      localStorage.setItem("isAuthenticated", "true");
-      localStorage.setItem("user", JSON.stringify(data.user));
-      // Keep school shape the same so Sidebar still works
-      localStorage.setItem(
-        "school",
-        JSON.stringify({
-          id: data.user.school_id,
-          school_name: data.user.school_name,
-          short_name: data.user.short_name,
-        }),
-      );
-      navigate(data.user.role === "admin" ? "/dashboard" : "/home");
-
-    } catch {
-      setError("Cannot connect to the server. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    localStorage.setItem("user", JSON.stringify(user));
+    localStorage.setItem(
+      "school",
+      JSON.stringify({
+        id: user.school_id,
+        school_name: user.school_name,
+        short_name: user.short_name,
+      }),
+    );
+    navigate(user.role === "admin" ? "/dashboard" : "/home");
+  } catch (err: any) {
+    setError(
+      err.response?.data?.message ||
+        "Cannot connect to the server. Please try again.",
+    );
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-100 dark:from-slate-950 dark:via-indigo-950 dark:to-purple-950 flex flex-col items-center justify-center p-6 relative overflow-hidden">

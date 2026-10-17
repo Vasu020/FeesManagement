@@ -24,7 +24,12 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from "@/components/ui/popover";
-import { apiFetch, BASE_URL, getFeeRules } from "../StudentDirectory/utils/helpers";
+import { getFeeRules } from "../StudentDirectory/utils/helpers";
+import {
+  feeRulesApi,
+  type FeeRule,
+  type FeeRuleResponse,
+} from "@/AppComponents/Utilities/apis/api";
 
 
 
@@ -50,12 +55,15 @@ const ALL_CLASSES = [
 
 
 
-const postFeeRule = (body: object) =>
-  apiFetch(BASE_URL, { method: "POST", body: JSON.stringify(body) });
+const postFeeRule = <T = FeeRule>(
+  body: Record<string, unknown>,
+): Promise<FeeRuleResponse<T>> => feeRulesApi.create<T>(body);
 
 
-const updateFeeRule = (id: number, body: object) =>
-  apiFetch(`${BASE_URL}/${id}`, { method: "PUT", body: JSON.stringify(body) });
+const updateFeeRule = <T = FeeRule>(
+  id: number,
+  body: Record<string, unknown>,
+): Promise<FeeRuleResponse<T>> => feeRulesApi.update<T>(id, body);
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -361,9 +369,9 @@ function FeeRulesSettings({ openSheet, setOpenSheet }: any) {
     const loadRules = async () => {
       try {
         const [lateRes, concRes, scholRes] = await Promise.all([
-          getFeeRules("late_fee"),
-          getFeeRules("concession"),
-          getFeeRules("scholarship"),
+          getFeeRules<LateFeeRule & { id: number }>("late_fee"),
+          getFeeRules<Preset>("concession"),
+          getFeeRules<Preset>("scholarship"),
         ]);
 
         if (lateRes.data?.length) {
@@ -403,9 +411,12 @@ function FeeRulesSettings({ openSheet, setOpenSheet }: any) {
       };
 
       if ((lateFee as any).id) {
-        await updateFeeRule((lateFee as any).id, body);
+        await updateFeeRule<LateFeeRule & { id: number }>(
+          (lateFee as any).id,
+          body,
+        );
       } else {
-        const res = await postFeeRule(body);
+        const res = await postFeeRule<LateFeeRule & { id: number }>(body);
         setLateFee((prev) => ({ ...prev, id: res.data.id }) as any);
       }
     } catch (err) {
@@ -420,7 +431,7 @@ function FeeRulesSettings({ openSheet, setOpenSheet }: any) {
     if (!newConcession.name || !newConcession.value) return;
     setConcessionLoading(true);
     try {
-      const res = await postFeeRule({
+      const res = await postFeeRule<Preset>({
         rule_type: "concession",
         preset_name: newConcession.name,
         value_type: newConcession.type,
@@ -444,7 +455,7 @@ function FeeRulesSettings({ openSheet, setOpenSheet }: any) {
       return;
     setConcessionLoading(true);
     try {
-      const res = await updateFeeRule(editingConcession.id, {
+      const res = await updateFeeRule<Preset>(editingConcession.id, {
         preset_name: newConcession.name,
         value_type: newConcession.type,
         value: Number(newConcession.value),
@@ -479,7 +490,7 @@ function FeeRulesSettings({ openSheet, setOpenSheet }: any) {
     if (!newScholarship.name || !newScholarship.value) return;
     setScholarshipLoading(true);
     try {
-      const res = await postFeeRule({
+      const res = await postFeeRule<Preset>({
         rule_type: "scholarship",
         preset_name: newScholarship.name,
         value_type: newScholarship.type,
@@ -503,7 +514,7 @@ function FeeRulesSettings({ openSheet, setOpenSheet }: any) {
       return;
     setScholarshipLoading(true);
     try {
-      const res = await updateFeeRule(editingScholarship.id, {
+      const res = await updateFeeRule<Preset>(editingScholarship.id, {
         preset_name: newScholarship.name,
         value_type: newScholarship.type,
         value: Number(newScholarship.value),

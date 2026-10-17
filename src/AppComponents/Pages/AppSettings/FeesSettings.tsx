@@ -13,9 +13,8 @@ import {
   Sparkles,
   ListCheck,
 } from "lucide-react";
-import axios from "axios";
-import { API_BASE_URL } from "@/AppComponents/Utilities/Constant";
 import { getSchoolId } from "@/AppComponents/Utilities/ReusableFn";
+import { classesApi } from "@/AppComponents/Utilities/apis/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -313,11 +312,9 @@ const FeesSettings = ({ openSheet, setOpenSheet }: any) => {
 
   const fetchfees = async () => {
     try {
-      const res = await axios.get(
-        `${API_BASE_URL}/api/classes?school_id=${schoolId}`,
-      );
-      if (res.data.status === "success") setFees(res.data.data);
-      else setError(res.data.message);
+      const res = await classesApi.getAll(schoolId);
+      if (res.status === "success") setFees(res.data);
+      else setError(res.message);
     } catch {
       setError("Failed to fetch fees.");
     }
@@ -369,7 +366,7 @@ const FeesSettings = ({ openSheet, setOpenSheet }: any) => {
         others,
         otherCategories,
       } = editItem;
-      await axios.put(`${API_BASE_URL}/api/classes/${id}`, {
+      await classesApi.update(id, {
         classname,
         tutions,
         admission,
