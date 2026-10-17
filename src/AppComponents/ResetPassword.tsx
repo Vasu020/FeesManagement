@@ -20,7 +20,7 @@ import {
   CheckCircle2,
   ShieldCheck,
 } from "lucide-react";
-import { API_BASE_URL } from "./Utilities/Constant";
+import { usersApi } from "./Utilities/apis/api";
 
 // ── Password validation rules ─────────────
 function getPasswordRules(password: any) {
@@ -84,19 +84,13 @@ export default function ResetPassword() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/users/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) return setError(data.message || "Something went wrong.");
-
+      await usersApi.resetPassword(email, password);
       setSuccess(true);
-    } catch {
-      setError("Cannot connect to the server. Please try again.");
+    } catch (err: any) {
+      setError(
+        err.response?.data?.message ||
+          "Cannot connect to the server. Please try again.",
+      );
     } finally {
       setLoading(false);
     }

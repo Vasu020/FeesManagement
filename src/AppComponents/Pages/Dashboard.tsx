@@ -12,8 +12,8 @@ import {
   Line,
   Legend,
 } from "recharts";
-import { API_BASE_URL } from "../Utilities/Constant";
 import { getSchoolId } from "../Utilities/ReusableFn";
+import { classesApi, studentsApi } from "../Utilities/apis/api";
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const C = {
@@ -359,16 +359,12 @@ const Dashboard = () => {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      fetch(`${API_BASE_URL}/api/students?school_id=${schoolId}`).then((r) =>
-        r.json(),
-      ),
-      fetch(`${API_BASE_URL}/api/classes?school_id=${schoolId}`).then((r) =>
-        r.json(),
-      ),
+      studentsApi.getAll(schoolId),
+      classesApi.getAll(schoolId),
     ])
       .then(([studRes, classRes]) => {
-        const s: any[] = studRes.data ?? [];
-        const cl: any[] = classRes.data ?? [];
+        const s: any[] = studRes.status === "success" ? studRes.data : [];
+        const cl: any[] = classRes.status === "success" ? classRes.data : [];
         setStudents(s);
         setClasses(cl);
 

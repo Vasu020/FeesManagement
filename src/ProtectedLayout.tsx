@@ -1,11 +1,10 @@
 // src/ProtectedLayout.tsx
 import { Navigate, Outlet } from "react-router-dom";
 import Sidebar from "./AppComponents/Sidebar";
+import { isLoggedIn } from "./AppComponents/Utilities/apis/api";
 
 export default function ProtectedLayout() {
-  const isAuthenticated = localStorage.getItem("isAuthenticated") === "true";
-
-  if (!isAuthenticated) return <Navigate to="/" replace />;
+  if (!isLoggedIn()) return <Navigate to="/" replace />;
 
   return (
     <div className="flex h-screen overflow-hidden">

@@ -20,7 +20,7 @@ export interface Student {
   standard: string;
   roll_no: number;
   active_date: string;
-  inactive_date: string;
+  inactive_date: string | null;
   current_session: string;
 }
 export interface FeeRule {

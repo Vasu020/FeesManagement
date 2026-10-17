@@ -481,7 +481,7 @@ function useFeeRules(mode: "scholarship" | "concession" | undefined) {
     if (!mode) return;
     setLoading(true);
 
-    getFeeRules(mode)         // ← uses your apiFetch with absolute URL
+    getFeeRules(mode)
       .then((res) => {
         const noneOpt: FeeRuleOption = {
           label: mode === "scholarship" ? "No Scholarship" : "No Concession",

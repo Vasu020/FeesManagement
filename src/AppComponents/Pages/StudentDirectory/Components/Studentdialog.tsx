@@ -15,7 +15,7 @@ import { User, BookOpen, Wallet, AlertCircle, Save, Plus } from "lucide-react";
 import { T } from "../utils/theme";
 import { font } from "../utils/theme";
 import type { Student, ClassItem, FeeRule } from "../types";
-import { BASE_URL } from "../utils/helpers";
+import { feeRulesApi } from "@/AppComponents/Utilities/apis/api";
 import { Printer } from "lucide-react";
 import { printFeesReceipt } from "@/AppComponents/Hooks/printFeesReceipt";
 
@@ -116,10 +116,9 @@ export const StudentDialog = ({
   useEffect(() => {
     const fetchFeeRule = async () => {
       try {
-        const res = await fetch(`${BASE_URL}?type=late_fee`);
-        const data = await res.json();
-        if (data.success && data.data.length > 0) {
-          setFeeRule(data.data[0]);
+        const response = await feeRulesApi.getAll("late_fee");
+        if (response.success && response.data.length > 0) {
+          setFeeRule(response.data[0] as FeeRule);
         }
       } catch (err) {
         console.error("Failed to fetch fee rule:", err);

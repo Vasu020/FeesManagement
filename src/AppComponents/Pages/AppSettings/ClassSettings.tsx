@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import {
@@ -12,9 +12,8 @@ import {
   Search,
   X,
 } from "lucide-react";
-import axios from "axios";
 import { getSchoolId } from "@/AppComponents/Utilities/ReusableFn";
-import { API_BASE_URL } from "@/AppComponents/Utilities/Constant";
+import { classesApi } from "@/AppComponents/Utilities/apis/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,11 +59,9 @@ const StatPill = ({
 const ClassCard = ({
   cls,
   onEdit,
-  index,
 }: {
   cls: any;
   onEdit: (cls: any) => void;
-  index: number;
 }) => (
   <div className="group bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-200 overflow-hidden">
     {/* Top bar */}
@@ -193,21 +190,19 @@ const ClassSettings = ({ openSheet, setOpenSheet }: any) => {
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
-  const fetchClasses = async () => {
+  const fetchClasses = useCallback(async () => {
     try {
-      const res = await axios.get(
-        `${API_BASE_URL}/api/classes?school_id=${schoolId}`,
-      );
-      if (res.data.status === "success") setClasses(res.data.data);
-      else setError(res.data.message);
+      const res = await classesApi.getAll(schoolId);
+      if (res.status === "success") setClasses(res.data);
+      else setError(res.message);
     } catch {
       setError("Failed to fetch classes. Please try again.");
     }
-  };
+  }, [schoolId]);
 
   useEffect(() => {
     fetchClasses();
-  }, []);
+  }, [fetchClasses]);
 
   // ── Open sheet ─────────────────────────────────────────────────────────────
 
@@ -234,7 +229,7 @@ const ClassSettings = ({ openSheet, setOpenSheet }: any) => {
       const { classname, students, sections } = formItem;
       if (!classname || students === undefined || sections === undefined)
         throw new Error("All fields are required.");
-      await axios.post(`${API_BASE_URL}/api/classes`, {
+      await classesApi.create({
         school_id: schoolId,
         classname,
         students,
@@ -261,7 +256,7 @@ const ClassSettings = ({ openSheet, setOpenSheet }: any) => {
     setSaving(true);
     try {
       const { id, classname, students, sections } = formItem;
-      await axios.put(`${API_BASE_URL}/api/classes/${id}`, {
+      await classesApi.update(id, {
         classname,
         students,
         sections,
@@ -375,11 +370,10 @@ const ClassSettings = ({ openSheet, setOpenSheet }: any) => {
                 </p>
               </div>
             ) : (
-              filtered.map((cls, i) => (
+              filtered.map((cls) => (
                 <ClassCard
                   key={cls.id}
                   cls={cls}
-                  index={i}
                   onEdit={(c) => openAddEdit(false, c)}
                 />
               ))
@@ -421,7 +415,11 @@ const ClassSettings = ({ openSheet, setOpenSheet }: any) => {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              isAdd ? createClass() : handleUpdate();
+              if (isAdd) {
+                void createClass();
+              } else {
+                void handleUpdate();
+              }
             }}
             className="flex flex-col flex-1 overflow-hidden"
           >
