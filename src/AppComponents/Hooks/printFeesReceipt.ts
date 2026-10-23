@@ -1,5 +1,6 @@
 // utils/printFeesReceipt.ts
 import jsPDF from "jspdf";
+import { calcBalance } from "../Pages/StudentDirectory/utils/helpers";
 
 interface Student {
   student_id: number;
@@ -13,10 +14,14 @@ interface Student {
   late_fees_charges: number;
   concession: number;
   scholarship: number;
+  late_fees_paid?: number;
+  late_fees_balance?: number;
   due_date?: string;
   last_payment_date?: string;
   standard?: string;
   roll_no?: number;
+  email?: string;
+  contact_phone?: string;
 }
 
 export function printFeesReceipt(student: Student) {
@@ -88,26 +93,41 @@ export function printFeesReceipt(student: Student) {
   };
 
   const col2 = W / 2 + 4;
+  const detailRows = [
+    [
+      ["STUDENT NAME", `${student.first_name} ${student.last_name}`],
+      ["FATHER'S NAME", student.father_name || "—"],
+    ],
+    [
+      ["ROLL NUMBER", student.roll_no ? String(student.roll_no) : "—"],
+      ["CLASS / STANDARD", student.standard || "—"],
+    ],
+    [
+      ["ENROLLMENT DATE", fmtDate(student.enrollment_date)],
+      ["FEE DUE DATE", fmtDate(student.due_date)],
+    ],
+    ...(student.email?.trim() || student.contact_phone?.trim()
+      ? [
+          [
+            ...(student.email?.trim()
+              ? [["EMAIL", student.email.trim()]]
+              : []),
+            ...(student.contact_phone?.trim()
+              ? [["PHONE", student.contact_phone.trim()]]
+              : []),
+          ],
+        ]
+      : []),
+    [["LAST PAYMENT DATE", fmtDate(student.last_payment_date)]],
+  ];
 
-  drawField(
-    "STUDENT NAME",
-    `${student.first_name} ${student.last_name}`,
-    margin,
-    y,
-  );
-  drawField("FATHER'S NAME", student.father_name || "—", col2, y);
-  y += 34;
-
-  drawField("STUDENT ID", `#${student.student_id}`, margin, y);
-  drawField("CLASS / STANDARD", student.standard || "—", col2, y);
-  y += 34;
-
-  drawField("ENROLLMENT DATE", fmtDate(student.enrollment_date), margin, y);
-  drawField("FEE DUE DATE", fmtDate(student.due_date), col2, y);
-  y += 34;
-
-  drawField("LAST PAYMENT DATE", fmtDate(student.last_payment_date), margin, y);
-  y += 28;
+  detailRows.forEach((row) => {
+    const [left, right] = row;
+    drawField(left[0], left[1], margin, y);
+    if (right) drawField(right[0], right[1], col2, y);
+    y += 34;
+  });
+  y += 4;
 
   // Divider
   doc.setDrawColor(...gray(210));
@@ -166,23 +186,22 @@ export function printFeesReceipt(student: Student) {
 
   drawRow("Total Fees", fmt(student.total_fees));
 
-  if ((student.late_fees_charges || 0) > 0)
-    drawRow(`Late Fee Charges`, `+ ${fmt(student.late_fees_charges)}`);
-
   if ((student.concession || 0) > 0)
     drawRow("Concession", `- ${fmt(student.concession)}`);
 
   if ((student.scholarship || 0) > 0)
     drawRow("Scholarship", `- ${fmt(student.scholarship)}`);
 
+  const lateFeesCharged = Math.max(Number(student.late_fees_charges) || 0, 0);
+  const lateFeesPaid = Math.max(Number(student.late_fees_paid) || 0, 0);
+  const lateFeesPending = Math.max(
+    Number(
+      student.late_fees_balance ?? lateFeesCharged - lateFeesPaid,
+    ) || 0,
+    0,
+  );
 
-   const totalEff =
-    (student.total_fees || 0) +
-    (student.late_fees_charges || 0) -
-    (student.concession || 0) -
-    (student.scholarship || 0);
-    
-  const computedBalance = Math.max(totalEff - (student.fees_paid || 0), 0);
+  const computedBalance = calcBalance(student);
   const isPaid = computedBalance === 0;
   drawRow("Amount Paid", fmt(student.fees_paid), { topRule: true });
 
@@ -193,6 +212,11 @@ export function printFeesReceipt(student: Student) {
     bottomRule: true,
   });
 
+  if (lateFeesCharged > 0)
+    drawRow("Late Fees", fmt(lateFeesCharged), { topRule: true });
+  if (lateFeesPaid > 0)
+    drawRow("Late Fees Paid", fmt(lateFeesPaid));
+
   y += 8;
 
   // Payment status line
@@ -200,8 +224,10 @@ export function printFeesReceipt(student: Student) {
   doc.setFontSize(8.5);
   doc.setTextColor(...gray(100));
   doc.text(
-    isPaid
-      ? "✓  Payment complete — no balance outstanding."
+    isPaid && lateFeesPending > 0
+      ? "✓  Regular fee balance clear. Late fees remain pending separately."
+      : isPaid
+        ? "✓  Payment complete — no regular fee balance outstanding."
       : "Payment is pending. Please clear the balance by the due date.",
     margin,
     y,

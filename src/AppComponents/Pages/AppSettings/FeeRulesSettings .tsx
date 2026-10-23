@@ -20,6 +20,12 @@ import { GraduationCap, Pencil, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  classesApi,
+  settingsApi,
+  type ClassData,
+} from "@/AppComponents/Utilities/apis/api";
+import { getSchoolId } from "@/AppComponents/Utilities/ReusableFn";
+import {
   Popover,
   PopoverTrigger,
   PopoverContent,
@@ -32,24 +38,6 @@ import {
 } from "@/AppComponents/Utilities/apis/api";
 
 
-
-const ALL_CLASSES = [
-  "Nursery",
-  "LKG",
-  "UKG",
-  "Class 1",
-  "Class 2",
-  "Class 3",
-  "Class 4",
-  "Class 5",
-  "Class 6",
-  "Class 7",
-  "Class 8",
-  "Class 9",
-  "Class 10",
-  "Class 11",
-  "Class 12",
-];
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
@@ -94,9 +82,15 @@ const blankPreset = () => ({
 function ClassPicker({
   selected,
   onChange,
+  classes,
+  classesLoading,
+  classesError,
 }: {
   selected: string[];
   onChange: (val: string[]) => void;
+  classes: string[];
+  classesLoading: boolean;
+  classesError: string;
 }) {
   const isAll = selected.length === 0;
 
@@ -135,7 +129,7 @@ function ClassPicker({
             <span className="text-sm font-medium">All Classes (default)</span>
           </div>
           <div className="grid grid-cols-2 gap-1 max-h-55 overflow-y-auto">
-            {ALL_CLASSES.map((cls) => (
+            {classes.map((cls) => (
               <div
                 key={cls}
                 className="flex items-center gap-2 cursor-pointer py-0.5"
@@ -148,7 +142,18 @@ function ClassPicker({
                 <span className="text-sm">{cls}</span>
               </div>
             ))}
+            {!classesLoading && !classesError && classes.length === 0 && (
+              <p className="col-span-2 text-xs text-muted-foreground py-2">
+                No classes have been added for this school.
+              </p>
+            )}
           </div>
+          {classesLoading && (
+            <p className="text-xs text-muted-foreground">Loading classes…</p>
+          )}
+          {classesError && (
+            <p className="text-xs text-destructive">{classesError}</p>
+          )}
           {!isAll && (
             <Button
               variant="ghost"
@@ -249,6 +254,9 @@ function PresetRow({ item, onEdit }: { item: Preset; onEdit: () => void }) {
 function PresetForm({
   preset,
   setPreset,
+  classes,
+  classesLoading,
+  classesError,
   onSubmit,
   namePlaceholder,
   isEditing,
@@ -257,6 +265,9 @@ function PresetForm({
 }: {
   preset: ReturnType<typeof blankPreset>;
   setPreset: (v: ReturnType<typeof blankPreset>) => void;
+  classes: string[];
+  classesLoading: boolean;
+  classesError: string;
   onSubmit: () => void;
   namePlaceholder: string;
   isEditing: boolean;
@@ -306,6 +317,9 @@ function PresetForm({
       <ClassPicker
         selected={preset.classes}
         onChange={(classes) => setPreset({ ...preset, classes })}
+        classes={classes}
+        classesLoading={classesLoading}
+        classesError={classesError}
       />
 
       <div className="flex gap-2">
@@ -335,6 +349,8 @@ function PresetForm({
 // ── Main Component ────────────────────────────────────────────────────────────
 
 function FeeRulesSettings({ openSheet, setOpenSheet }: any) {
+  const schoolId = getSchoolId();
+
   // ── Late Fee state ──
   const [lateFee, setLateFee] = useState<LateFeeRule>({
     due_day_of_month: "",
@@ -358,6 +374,13 @@ function FeeRulesSettings({ openSheet, setOpenSheet }: any) {
     null,
   );
   const [scholarshipLoading, setScholarshipLoading] = useState(false);
+  const [singleDiscountOnly, setSingleDiscountOnly] = useState(false);
+  const [discountSettingLoading, setDiscountSettingLoading] = useState(false);
+  const [discountSettingReady, setDiscountSettingReady] = useState(false);
+  const [discountSettingError, setDiscountSettingError] = useState("");
+  const [classes, setClasses] = useState<string[]>([]);
+  const [classesLoading, setClassesLoading] = useState(false);
+  const [classesError, setClassesError] = useState("");
 
   // ── GET: load all rules — fires only once when sheet opens ───────────────
   const hasFetched = useRef(false);
@@ -367,6 +390,10 @@ function FeeRulesSettings({ openSheet, setOpenSheet }: any) {
     hasFetched.current = true;
 
     const loadRules = async () => {
+      setClasses([]);
+      setClassesLoading(true);
+      setClassesError("");
+
       try {
         const [lateRes, concRes, scholRes] = await Promise.all([
           getFeeRules<LateFeeRule & { id: number }>("late_fee"),
@@ -389,10 +416,71 @@ function FeeRulesSettings({ openSheet, setOpenSheet }: any) {
       } catch (err) {
         console.error("Failed to load fee rules:", err);
       }
+
+      try {
+        if (schoolId == null) {
+          throw new Error("The current school could not be identified.");
+        }
+        const response = await classesApi.getAll(schoolId);
+        if (response.status !== "success") {
+          throw new Error(response.message || "The classes request failed.");
+        }
+        setClasses(
+          Array.from(
+            new Set(
+              response.data
+                .map((classItem: ClassData) => classItem.classname.trim())
+                .filter(Boolean),
+            ),
+          ),
+        );
+      } catch (err) {
+        console.error("Failed to load current school's classes:", err);
+        setClassesError("Unable to load classes for this school.");
+      } finally {
+        setClassesLoading(false);
+      }
+
+      try {
+        const settings = await settingsApi.getAll();
+        if (!settings.success) {
+          throw new Error("The settings request was not successful.");
+        }
+        setSingleDiscountOnly(
+          ["true", "1"].includes(
+            String(settings.data?.single_discount_only).toLowerCase(),
+          ),
+        );
+        setDiscountSettingReady(true);
+        setDiscountSettingError("");
+      } catch (err) {
+        console.error("Failed to load discount settings:", err);
+        setDiscountSettingReady(false);
+        setDiscountSettingError("Unable to load discount settings.");
+      }
     };
 
     loadRules();
-  }, [openSheet]);
+  }, [openSheet, schoolId]);
+
+  const updateSingleDiscountSetting = async (enabled: boolean) => {
+    setDiscountSettingLoading(true);
+    setDiscountSettingError("");
+    try {
+      const response = await settingsApi.update({
+        single_discount_only: String(enabled),
+      });
+      if (!response.success) {
+        throw new Error(response.message || "The settings update failed.");
+      }
+      setSingleDiscountOnly(enabled);
+    } catch (err) {
+      console.error("Failed to update discount settings:", err);
+      setDiscountSettingError("Unable to save this setting. Please try again.");
+    } finally {
+      setDiscountSettingLoading(false);
+    }
+  };
 
   // Reset fetch guard when sheet closes so it re-fetches next open
   useEffect(() => {
@@ -552,6 +640,50 @@ function FeeRulesSettings({ openSheet, setOpenSheet }: any) {
           <SheetTitle>Fee Rules</SheetTitle>
         </SheetHeader>
 
+        <div className="mx-5 mt-5 flex items-start gap-3 rounded-lg border p-4">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={singleDiscountOnly}
+            aria-label="Allow only one discount per student"
+            disabled={!discountSettingReady || discountSettingLoading}
+            onClick={() =>
+              updateSingleDiscountSetting(!singleDiscountOnly)
+            }
+            className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${
+              singleDiscountOnly ? "bg-primary" : "bg-input"
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 translate-y-0.5 rounded-full bg-background shadow transition-transform ${
+                singleDiscountOnly ? "translate-x-5" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+          <div className="space-y-1">
+            <Label>
+              Allow only one discount per student
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              When enabled, applying a scholarship clears the concession, and
+              applying a concession clears the scholarship.
+            </p>
+            {discountSettingLoading && (
+              <p className="text-xs text-muted-foreground">Saving setting…</p>
+            )}
+            {!discountSettingReady && !discountSettingError && (
+              <p className="text-xs text-muted-foreground">
+                Loading setting…
+              </p>
+            )}
+            {discountSettingError && (
+              <p className="text-xs text-destructive">
+                {discountSettingError}
+              </p>
+            )}
+          </div>
+        </div>
+
         <Tabs defaultValue="latefee" className="p-5 mt-4">
           <TabsList className="w-full">
             <TabsTrigger value="latefee" className="flex-1 cursor-pointer ">
@@ -628,6 +760,9 @@ function FeeRulesSettings({ openSheet, setOpenSheet }: any) {
             <PresetForm
               preset={newConcession}
               setPreset={setNewConcession}
+              classes={classes}
+              classesLoading={classesLoading}
+              classesError={classesError}
               onSubmit={editingConcession ? updateConcession : addConcession}
               namePlaceholder="e.g. Sibling Discount"
               isEditing={!!editingConcession}
@@ -658,6 +793,9 @@ function FeeRulesSettings({ openSheet, setOpenSheet }: any) {
             <PresetForm
               preset={newScholarship}
               setPreset={setNewScholarship}
+              classes={classes}
+              classesLoading={classesLoading}
+              classesError={classesError}
               onSubmit={editingScholarship ? updateScholarship : addScholarship}
               namePlaceholder="e.g. Merit Scholarship"
               isEditing={!!editingScholarship}

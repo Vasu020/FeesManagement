@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -450,7 +449,14 @@ export interface ConfigureDiscountDialogProps {
   onClose: () => void;
   mode: DiscountMode;
   student: Student | null;
-  onApply: (id: number, field: DiscountMode, amount: number) => void;
+  onApply: (
+    id: number,
+    field: DiscountMode,
+    amount: number,
+    singleDiscountOnly: boolean,
+  ) => Promise<boolean>;
+  singleDiscountOnly?: boolean;
+  discountPolicyReady?: boolean;
 }
 
 // Types
@@ -460,8 +466,7 @@ interface FeeRule {
   preset_name: string;
   value_type: "percentage" | "flat";
   value: string;
-  applicable_classes: string[];
-  is_active: boolean;
+  applicable_classes: string[] | string | null;
 }
 
 interface FeeRuleOption {
@@ -473,16 +478,25 @@ interface FeeRuleOption {
 }
 
 
-function useFeeRules(mode: "scholarship" | "concession" | undefined) {
+function useFeeRules(
+  mode: "scholarship" | "concession" | undefined,
+  studentClass: string,
+) {
   const [opts, setOpts] = useState<FeeRuleOption[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     if (!mode) return;
     setLoading(true);
+    setLoadError("");
 
     getFeeRules(mode)
       .then((res) => {
+        if (!res.success) {
+          throw new Error(`Failed to load ${mode} presets.`);
+        }
+
         const noneOpt: FeeRuleOption = {
           label: mode === "scholarship" ? "No Scholarship" : "No Concession",
           value: "none",
@@ -492,26 +506,51 @@ function useFeeRules(mode: "scholarship" | "concession" | undefined) {
         };
 
         const fetched: FeeRuleOption[] = (res.data as FeeRule[])
-          .filter((r) => r.is_active)
+          .filter((rule) => {
+            if (!rule.applicable_classes) return true;
+            let applicableClasses: string[];
+            if (Array.isArray(rule.applicable_classes)) {
+              applicableClasses = rule.applicable_classes;
+            } else {
+              try {
+                const parsed: unknown = JSON.parse(rule.applicable_classes);
+                applicableClasses = Array.isArray(parsed)
+                  ? parsed.map(String)
+                  : [String(parsed)];
+              } catch {
+                applicableClasses = [rule.applicable_classes];
+              }
+            }
+            return (
+              applicableClasses.length === 0 ||
+              applicableClasses.includes(studentClass)
+            );
+          })
           .map((r) => {
             const isPct = r.value_type === "percentage";
-            const amt = parseFloat(r.value);
+            const amt = Number(r.value);
             return {
               label: r.preset_name,
               value: String(r.id),
-              desc: isPct ? `${amt}% fee waiver` : `Flat ₹${amt} waiver`,
+              desc: isPct
+                ? `${amt}% fee waiver`
+                : `Flat ₹${Number.isFinite(amt) ? amt : 0} waiver`,
               kind: isPct ? "pct" : "fixed",
-              amt,
+              amt: Number.isFinite(amt) ? amt : 0,
             };
           });
 
         setOpts([noneOpt, ...fetched]);
       })
-      .catch(console.error)
+      .catch((error: unknown) => {
+        console.error(`Failed to load ${mode} presets:`, error);
+        setOpts([]);
+        setLoadError(`Could not load ${mode} presets.`);
+      })
       .finally(() => setLoading(false));
-  }, [mode]);
+  }, [mode, studentClass]);
 
-  return { opts, loading };
+  return { opts, loading, loadError };
 }
 
 export const ConfigureDiscountDialog = ({
@@ -520,22 +559,47 @@ export const ConfigureDiscountDialog = ({
   mode,
   student,
   onApply,
+  singleDiscountOnly = false,
+  discountPolicyReady = true,
 }: ConfigureDiscountDialogProps) => {
 
   const isSchol = mode === "scholarship";
   const [selected, setSelected] = useState("none");
-  const { opts, loading } = useFeeRules(mode);
+  const [applying, setApplying] = useState(false);
+  const { opts, loading, loadError } = useFeeRules(
+    mode,
+    student?.standard ?? "",
+  );
+  const currentDiscount = Number(student?.[mode] ?? 0);
+  const appliedPreset = opts.find((option) => option.value === selected);
+
+  useEffect(() => {
+    if (!open || currentDiscount <= 0) {
+      setSelected("none");
+      return;
+    }
+    const matchingOption = opts.find((option) => {
+      if (option.value === "none") return false;
+      const optionAmount =
+        option.kind === "pct"
+          ? Math.round((Number(student?.total_fees ?? 0) * option.amt) / 100)
+          : option.amt;
+      return Math.round(optionAmount * 100) === Math.round(currentDiscount * 100);
+    });
+    setSelected(matchingOption?.value ?? "none");
+  }, [open, currentDiscount, opts, student?.total_fees]);
   
   if (!student) return null;
   const total = Number(student.total_fees ?? 0);
   const opt = opts.find((o) => o.value === selected);
 
-  const disc =
+  const requestedDiscount =
     !opt || opt.value === "none"
       ? 0
       : opt.kind === "pct"
         ? Math.round((total * opt.amt) / 100)
         : opt.amt;
+  const disc = Math.min(Math.max(requestedDiscount, 0), total);
 
   const after = Math.max(total - disc, 0);
 
@@ -568,9 +632,22 @@ export const ConfigureDiscountDialog = ({
             Cancel
           </Button>
           <Button
-            onClick={() => {
-              onApply(student.student_id, mode, disc);
-              onClose();
+            disabled={
+              applying || loading || !discountPolicyReady || !!loadError
+            }
+            onClick={async () => {
+              setApplying(true);
+              try {
+                const applied = await onApply(
+                  student.student_id,
+                  mode,
+                  disc,
+                  singleDiscountOnly,
+                );
+                if (applied) onClose();
+              } finally {
+                setApplying(false);
+              }
             }}
             style={{
               background: isSchol ? T.accent : "#7C3AED",
@@ -582,7 +659,9 @@ export const ConfigureDiscountDialog = ({
             }}
           >
             <CheckCircle style={{ width: 14, marginRight: 6 }} />
-            Apply {isSchol ? "Scholarship" : "Concession"}
+            {applying
+              ? "Applying…"
+              : `Apply ${isSchol ? "Scholarship" : "Concession"}`}
           </Button>
         </>
       }
@@ -606,6 +685,30 @@ export const ConfigureDiscountDialog = ({
           </SelectContent>
         </Select>
       </FL>
+      {!discountPolicyReady && (
+        <p style={{ fontSize: 12, color: T.danger }}>
+          Discount settings are still loading or could not be loaded. Close
+          this dialog and try again.
+        </p>
+      )}
+      {loadError && (
+        <p style={{ fontSize: 12, color: T.danger }}>{loadError}</p>
+      )}
+      {opts.length === 1 && !loading && (
+        <p style={{ fontSize: 12, color: T.danger }}>
+          No active {isSchol ? "scholarship" : "concession"} presets are
+          available for this class. Add or activate a preset in Fee Rules.
+        </p>
+      )}
+      {currentDiscount > 0 && (
+        <p style={{ fontSize: 12, color: T.ok }}>
+          Currently applied: {appliedPreset?.label ?? (isSchol ? "Scholarship" : "Concession")}{" "}
+          ({fmtINR(currentDiscount)})
+          {selected === "none" && opts.length > 1
+            ? " (the original preset is not available)"
+            : ""}
+        </p>
+      )}
 
       {/* Live fee breakdown */}
       <div

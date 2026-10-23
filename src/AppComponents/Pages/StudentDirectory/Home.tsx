@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +22,7 @@ import {
 import type {
   ClassItem,
   DiscountMode,
+  LateFeePaymentSummary,
   LeaveRejoinMode,
   Student,
 } from "./types";
@@ -33,7 +33,18 @@ import {
   PromoteDialog,
 } from "./Components/Dialog";
 import { StudentDialog } from "./Components/Studentdialog";
-import { classesApi, studentsApi } from "@/AppComponents/Utilities/apis/api";
+import {
+  classesApi,
+  feeRulesApi,
+  settingsApi,
+  studentsApi,
+} from "@/AppComponents/Utilities/apis/api";
+import {
+  calcBalance,
+  calcEffective,
+  withCalculatedLateFee,
+} from "./utils/helpers";
+import type { FeeRule } from "./types";
 // import { useReminderNotify } from "@/AppComponents/Hooks/useReminderNotify";
 
 const Home = () => {
@@ -43,12 +54,15 @@ const Home = () => {
   // ── Data ──
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [lateFeeRule, setLateFeeRule] = useState<FeeRule | null>(null);
 
   // ── Filters ──
   const [session, setSession] = useState(sessions[0]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [error, setError] = useState("");
+  const [singleDiscountOnly, setSingleDiscountOnly] = useState(false);
+  const [discountPolicyReady, setDiscountPolicyReady] = useState(false);
 
   // ── Dialog state ──
   const [studentDlg, setStudentDlg] = useState(false);
@@ -73,7 +87,22 @@ const Home = () => {
           studentsApi.getAll(schoolId),
           classesApi.getAll(schoolId),
         ]);
-        if (sr.status === "success") setStudents(sr.data);
+        if (sr.status === "success") {
+          let activeLateFeeRule: FeeRule | null = null;
+          try {
+            const response = await feeRulesApi.getAll<FeeRule>("late_fee");
+            if (response.success) {
+              activeLateFeeRule = response.data.find((rule) => rule.is_active) ?? null;
+            }
+          } catch (feeRuleError) {
+            console.error("Unable to load late fee rule:", feeRuleError);
+          }
+
+          setLateFeeRule(activeLateFeeRule);
+          setStudents(sr.data.map((student) =>
+            withCalculatedLateFee(student, activeLateFeeRule),
+          ));
+        }
         if (cr.status === "success")
           setClasses(
             cr.data.map((classData) => ({
@@ -85,11 +114,22 @@ const Home = () => {
               others: String(classData.others ?? ""),
             })),
           );
+        const settings = await settingsApi.getAll();
+        if (!settings.success) {
+          throw new Error("The settings request was not successful.");
+        }
+        setSingleDiscountOnly(
+          ["true", "1"].includes(
+            String(settings.data?.single_discount_only).toLowerCase(),
+          ),
+        );
+        setDiscountPolicyReady(true);
       } catch (e) {
         console.error(e);
+        setError("Unable to load student fee settings.");
       }
     })();
-  }, []);
+  }, [schoolId]);
 
   // ── Filtered list ──
   const filtered = useMemo(() => {
@@ -117,14 +157,19 @@ const Home = () => {
   const openEdit = (s: Student) => {
     setEditingStudent({
       ...formatStudentDates(s),
-      active_date: "",
-      inactive_date: "",
-      current_session: "",
     } as any);
     setStudentDlg(true);
   };
 
   const handleStudentSubmit = async (data: Student, editingId?: number) => {
+    if (
+      data.status === "active" &&
+      !moment(data.active_date, "YYYY-MM-DD", true).isValid()
+    ) {
+      setError("Enter a valid active date for an active student.");
+      return;
+    }
+
     // Validate standard is selected
     if (!data.standard || data.standard === "") {
       setError("Please select a class/standard before saving.");
@@ -137,7 +182,13 @@ const Home = () => {
     const concession = Number(data.concession) || 0;
     const scholarship = Number(data.scholarship) || 0;
 
-    const effectiveTotal = totalFees + lateFee;
+    const effectiveTotal = calcEffective({
+      ...data,
+      total_fees: totalFees,
+      late_fees_charges: lateFee,
+      concession,
+      scholarship,
+    });
     const computedBalance = Math.max(effectiveTotal - feesPaid, 0);
 
     const payload: any = {
@@ -158,10 +209,11 @@ const Home = () => {
         : await studentsApi.create(payload);
 
       if (res.status === "success") {
+        const savedStudent = withCalculatedLateFee(res.data, lateFeeRule);
         setStudents((p) =>
           editingId
-            ? p.map((s) => (s.student_id === editingId ? res.data : s))
-            : [...p, res.data],
+            ? p.map((s) => (s.student_id === editingId ? savedStudent : s))
+            : [...p, savedStudent],
         );
         setStudentDlg(false);
       } else {
@@ -185,7 +237,11 @@ const Home = () => {
       });
       if (res.status === "success")
         setStudents((p) =>
-          p.map((s) => (s.student_id === studentId ? res.data : s)),
+          p.map((s) =>
+            s.student_id === studentId
+              ? withCalculatedLateFee(res.data, lateFeeRule)
+              : s,
+          ),
         );
     } catch (e) {
       console.error(e);
@@ -205,7 +261,11 @@ const Home = () => {
       const res = await studentsApi.update(studentId, payload);
       if (res.status === "success")
         setStudents((p) =>
-          p.map((s) => (s.student_id === studentId ? res.data : s)),
+          p.map((s) =>
+            s.student_id === studentId
+              ? withCalculatedLateFee(res.data, lateFeeRule)
+              : s,
+          ),
         );
     } catch (e) {
       console.error(e);
@@ -216,25 +276,89 @@ const Home = () => {
   studentId: number,
   field: DiscountMode,
   amount: number,
-) => {
+  onlyOneDiscount: boolean,
+): Promise<boolean> => {
+  const student = students.find((item) => item.student_id === studentId);
+  if (!student) {
+    setError("Could not find the student to update the discount.");
+    return false;
+  }
+
+  const otherField: DiscountMode =
+    field === "scholarship" ? "concession" : "scholarship";
+  const clearOtherDiscount =
+    onlyOneDiscount && amount > 0 && Number(student[otherField] ?? 0) > 0;
+  const changes: Partial<Student> = {
+    [field]: amount,
+    ...(clearOtherDiscount ? { [otherField]: 0 } : {}),
+  };
+
+  const balance = calcBalance({ ...student, ...changes });
+
   try {
     const res = await studentsApi.update(studentId, {
-      [field]: amount,
-    } as Partial<Student>);
+      ...changes,
+      balance,
+    });
 
     if (res.status === "success") {
       setStudents((prev) =>
-        prev.map((s) =>
-          s.student_id === studentId ? { ...s, ...res.data } : s,
-        ),
+        prev.map((s) => {
+          if (s.student_id !== studentId) return s;
+          const updated = withCalculatedLateFee(
+            { ...s, ...res.data, ...changes },
+            lateFeeRule,
+          );
+          return {
+            ...updated,
+            balance: calcBalance(updated),
+          };
+        }),
       );
+      setError("");
+      return true;
+    } else {
+      setError(res.message || "Failed to update discount.");
     }
   } catch (e: any) {
     console.error(e);
-    // show it in whatever way your page reports errors, e.g.:
-    // setError(e.response?.data?.message || "Failed to update discount.");
+    setError(e.response?.data?.message || "Failed to update discount.");
   }
+  return false;
 };
+
+  const handleLateFeePayment = async (
+    studentId: number,
+    amount: number,
+    paymentDate: string,
+  ): Promise<LateFeePaymentSummary | null> => {
+    try {
+      const response = await studentsApi.recordLateFeePayment(studentId, {
+        amount,
+        payment_date: paymentDate,
+      });
+      if (response.status !== "success") {
+        setError(response.message || "Failed to record late-fee payment.");
+        return null;
+      }
+
+      setStudents((current) =>
+        current.map((student) =>
+          student.student_id === studentId
+            ? { ...student, ...response.data }
+            : student,
+        ),
+      );
+      setError("");
+      return response.data;
+    } catch (err: any) {
+      console.error("Failed to record late-fee payment:", err);
+      setError(
+        err.response?.data?.message || "Failed to record late-fee payment.",
+      );
+      return null;
+    }
+  };
 
   return (
     <div
@@ -307,7 +431,7 @@ const Home = () => {
       </div>
 
       {/* ── KPI strip ── */}
-      <KpiStrip students={filtered} />
+      <KpiStrip students={filtered} allStudents={students} />
 
       {/* ── Toolbar ── */}
       <div
@@ -461,6 +585,7 @@ const Home = () => {
         classes={classes}
         students={students}
         onSubmit={handleStudentSubmit}
+        onRecordLateFeePayment={handleLateFeePayment}
         error={error}
         setError={setError}
       />
@@ -487,6 +612,8 @@ const Home = () => {
           mode={discountTarget.mode}
           student={discountTarget.student}
           onApply={handleDiscount}
+          singleDiscountOnly={singleDiscountOnly}
+          discountPolicyReady={discountPolicyReady}
         />
       )}
     </div>

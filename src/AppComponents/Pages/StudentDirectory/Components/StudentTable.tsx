@@ -4,6 +4,7 @@ import { T } from "../utils/theme";
 import {
   fmtINR,
   calcEffective,
+  calcBalance,
   calcFeePct,
   hasPendingFees,
   formatStudentDates,
@@ -21,7 +22,7 @@ const FeeBar = ({ student }: { student: Partial<Student> }) => {
   const paid = Number(student.fees_paid ?? 0);
   const eff = calcEffective(student);
   const pct = calcFeePct(student);
-  const balance = Math.max(eff - paid, 0);
+  const balance = calcBalance(student);
   const clear = balance === 0 && eff > 0;
 
   const hasConcessions =
@@ -106,10 +107,7 @@ const FeeBar = ({ student }: { student: Partial<Student> }) => {
             </TooltipTrigger>
 
             {hasConcessions && (
-              <TooltipContent
-                side="top"
-                align="end"
-              >
+              <TooltipContent side="top" align="end">
                 <div className="flex justify-between gap-8  pb-2 text-muted-foreground">
                   <span>Total</span>
                   <span>{fmtINR(Number(student.total_fees ?? 0))}</span>
@@ -131,7 +129,7 @@ const FeeBar = ({ student }: { student: Partial<Student> }) => {
                   </div>
                 )}
                 <div className="flex justify-between gap-8 pb-2 border-t border-border font-medium text-muted-foreground-800">
-                  <span>Payable</span>
+                  <span>Fee payable (excl. late fee)</span>
                   <span>{fmtINR(eff)}</span>
                 </div>
               </TooltipContent>
@@ -423,6 +421,45 @@ export const StudentTable = ({
 
                   <td style={{ padding: "13px 16px" }}>
                     <FeeBar student={s} />
+                    {Math.max(
+                      Number(
+                        s.late_fees_balance ??
+                          Number(s.late_fees_charges ?? 0) -
+                            Number(s.late_fees_paid ?? 0),
+                      ),
+                      0,
+                    ) > 0 && (
+                      <div className="mt-1">
+                        <span className="inline-flex rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                          {fmtINR(
+                            Math.max(
+                              Number(
+                                s.late_fees_balance ??
+                                  Number(s.late_fees_charges ?? 0) -
+                                    Number(s.late_fees_paid ?? 0),
+                              ),
+                              0,
+                            ),
+                          )}{" "}
+                          FORFIET 
+                        </span>
+                      </div>
+                    )}
+                    {(Number(s.scholarship ?? 0) > 0 ||
+                      Number(s.concession ?? 0) > 0) && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {Number(s.scholarship ?? 0) > 0 && (
+                          <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                            Scholarship applied: {fmtINR(Number(s.scholarship))}
+                          </span>
+                        )}
+                        {Number(s.concession ?? 0) > 0 && (
+                          <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
+                            Concession applied: {fmtINR(Number(s.concession))}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </td>
 
                   <td style={{ padding: "13px 16px" }}>

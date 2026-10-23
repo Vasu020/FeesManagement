@@ -1,5 +1,5 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from "react";
+import moment from "moment";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,10 +14,18 @@ import {
 import { User, BookOpen, Wallet, AlertCircle, Save, Plus } from "lucide-react";
 import { T } from "../utils/theme";
 import { font } from "../utils/theme";
-import type { Student, ClassItem, FeeRule } from "../types";
+import type {
+  Student,
+  ClassItem,
+  FeeRule,
+  LateFeePaymentSummary,
+} from "../types";
+import { calculateLateFeeCharge } from "../utils/helpers";
 import { feeRulesApi } from "@/AppComponents/Utilities/apis/api";
 import { Printer } from "lucide-react";
 import { printFeesReceipt } from "@/AppComponents/Hooks/printFeesReceipt";
+import { calcEffective } from "../utils/helpers";
+import { getAcademicSession } from "@/AppComponents/Utilities/ReusableFn";
 
 // ─── Shared within this file ──────────────────────────────────────────────────
 const Field = ({
@@ -46,17 +54,90 @@ const inp = {
   fontFamily: font,
 };
 
-type TabId = "personal" | "academic" | "fees";
+const sectionStyle = {
+  border: `1px solid ${T.line}`,
+  borderRadius: 12,
+  padding: 18,
+};
 
-const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
-  { id: "personal", label: "Personal", icon: <User style={{ width: 13 }} /> },
-  {
-    id: "academic",
-    label: "Academic",
-    icon: <BookOpen style={{ width: 13 }} />,
-  },
-  { id: "fees", label: "Fees", icon: <Wallet style={{ width: 13 }} /> },
-];
+const SectionHeading = ({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+}) => (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 10,
+      marginBottom: 16,
+    }}
+  >
+    <span
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 32,
+        height: 32,
+        borderRadius: 9,
+        background: T.infoBg,
+        color: T.accent,
+        flexShrink: 0,
+      }}
+    >
+      {icon}
+    </span>
+    <div>
+      <h3 style={{ margin: 0, color: T.text, fontSize: 14, fontWeight: 700 }}>
+        {title}
+      </h3>
+      <p style={{ margin: "3px 0 0", color: T.muted, fontSize: 12 }}>
+        {description}
+      </p>
+    </div>
+  </div>
+);
+
+const getPresetDueDate = (
+  referenceDate: string | null | undefined,
+  dueDay: number | undefined,
+): string => {
+  const dateParts = referenceDate?.slice(0, 10).split("-").map(Number);
+  const referenceYear = dateParts?.[0];
+  const referenceMonth = dateParts?.[1];
+  const referenceDay = dateParts?.[2];
+  const hasReferenceDate =
+    dateParts?.length === 3 &&
+    dateParts.every(Number.isFinite) &&
+    referenceYear !== undefined &&
+    referenceYear > 0 &&
+    referenceMonth !== undefined &&
+    referenceMonth >= 1 &&
+    referenceMonth <= 12 &&
+    referenceDay !== undefined &&
+    referenceDay >= 1 &&
+    referenceDay <= new Date(referenceYear, referenceMonth, 0).getDate();
+  const today = new Date();
+  const year = hasReferenceDate ? referenceYear : today.getFullYear();
+  const month = hasReferenceDate ? referenceMonth : today.getMonth() + 1;
+  const configuredDueDay = Number(dueDay);
+  const day =
+    Number.isInteger(configuredDueDay) && configuredDueDay > 0
+      ? configuredDueDay
+      : hasReferenceDate
+        ? referenceDay
+        : 1;
+  const lastDay = new Date(year, month, 0).getDate();
+
+  return `${year}-${String(month).padStart(2, "0")}-${String(
+    Math.min(day, lastDay),
+  ).padStart(2, "0")}`;
+};
 
 const rawStudent: Student = {
   first_name: "",
@@ -71,6 +152,9 @@ const rawStudent: Student = {
   fees_paid: 0,
   balance: 0,
   late_fees_charges: 0,
+  late_fees_paid: 0,
+  late_fees_balance: 0,
+  last_late_fee_payment_date: null,
   concession: 0,
   scholarship: 0,
   last_payment_date: "",
@@ -92,6 +176,11 @@ export interface StudentDialogProps {
   classes: ClassItem[];
   students: Student[];
   onSubmit: (data: Student, editingId?: number) => Promise<void>;
+  onRecordLateFeePayment: (
+    studentId: number,
+    amount: number,
+    paymentDate: string,
+  ) => Promise<LateFeePaymentSummary | null>;
   error: string;
   setError: (e: string) => void;
 }
@@ -104,21 +193,31 @@ export const StudentDialog = ({
   classes,
   students,
   onSubmit,
+  onRecordLateFeePayment,
   error,
   setError,
 }: StudentDialogProps) => {
-  const [tab, setTab] = useState<TabId>("personal");
   const [form, setForm] = useState<Student>(rawStudent);
   const [loading, setLoading] = useState(false);
   const [payingamount, setPayingamount] = useState<string>("0");
+  const [paymentDate, setPaymentDate] = useState(moment().format("YYYY-MM-DD"));
+  const [lateFeePaymentAmount, setLateFeePaymentAmount] = useState("");
+  const [lateFeePaymentDate, setLateFeePaymentDate] = useState(
+    moment().format("YYYY-MM-DD"),
+  );
+  const [lateFeePaymentLoading, setLateFeePaymentLoading] = useState(false);
+  const [lateFeePaymentError, setLateFeePaymentError] = useState("");
   const [feeRule, setFeeRule] = useState<FeeRule | null>(null);
 
   useEffect(() => {
     const fetchFeeRule = async () => {
       try {
         const response = await feeRulesApi.getAll("late_fee");
-        if (response.success && response.data.length > 0) {
-          setFeeRule(response.data[0] as FeeRule);
+        if (response.success) {
+          const activeRule = response.data.find(
+            (rule) => (rule as FeeRule).is_active,
+          );
+          setFeeRule(activeRule ? (activeRule as FeeRule) : null);
         }
       } catch (err) {
         console.error("Failed to fetch fee rule:", err);
@@ -128,58 +227,49 @@ export const StudentDialog = ({
   }, []);
 
   useEffect(() => {
-    const today = new Date();
-    const dayOfMonth = today.getDate();
-    const dueDate = new Date(today);
-    dueDate.setDate(feeRule?.due_day_of_month ?? 1);
-
-    const todayStr = today.toISOString().split("T")[0];
-    const dueDateStr = dueDate.toISOString().split("T")[0];
+    const todayStr = moment().format("YYYY-MM-DD");
 
     if (editingStudent) {
-      const dueDay = feeRule?.due_day_of_month ?? 1;
-      const graceDays = feeRule?.grace_days ?? 0;
-      const lateFeeAmount = Number(feeRule?.late_fee_amount ?? 0);
-
-      const existingDueDate = editingStudent.due_date
-        ? new Date(editingStudent.due_date)
-        : null;
-
-      const monthsOverdue = existingDueDate
-        ? (today.getFullYear() - existingDueDate.getFullYear()) * 12 +
-          (today.getMonth() - existingDueDate.getMonth())
-        : 0;
-      const currentMonthLate = dayOfMonth > dueDay + graceDays ? 1 : 0;
-      const totalOverdueMonths =
-        Math.max(0, monthsOverdue - 1) + currentMonthLate;
-
-      const calculatedLateFees = totalOverdueMonths * lateFeeAmount;
-
-      const newDueDate = new Date(today);
-      newDueDate.setDate(dueDay);
-      const newDueDateStr = newDueDate.toISOString().split("T")[0];
+      const dueDateStr = getPresetDueDate(
+        editingStudent.due_date,
+        feeRule?.due_day_of_month,
+      );
+      const calculatedLateFees = Math.max(
+        Number(editingStudent.late_fees_charges ?? 0),
+        calculateLateFeeCharge(dueDateStr, feeRule),
+      );
 
       setForm({
         ...rawStudent,
         ...editingStudent,
-        due_date: newDueDateStr,
+        active_date: moment(editingStudent.active_date).isValid()
+          ? moment(editingStudent.active_date).format("YYYY-MM-DD")
+          : editingStudent.status === "active"
+            ? editingStudent.enrollment_date || todayStr
+            : "",
+        due_date: dueDateStr,
         late_fees_charges: calculatedLateFees,
       });
     } else {
+      const dueDateStr = getPresetDueDate(
+        todayStr,
+        feeRule?.due_day_of_month,
+      );
       setForm({
         ...rawStudent,
         enrollment_date: todayStr,
+        active_date: todayStr,
+        current_session: getAcademicSession(todayStr),
         due_date: dueDateStr,
-        late_fees_charges:
-          dayOfMonth >
-          (feeRule?.due_day_of_month ?? 1) + (feeRule?.grace_days ?? 0)
-            ? Number(feeRule?.late_fee_amount ?? 0)
-            : 0,
+        late_fees_charges: calculateLateFeeCharge(dueDateStr, feeRule),
       });
     }
-    setTab("personal");
     setError("");
-  }, [editingStudent, open, feeRule]);
+    setPaymentDate(todayStr);
+    setLateFeePaymentAmount("");
+    setLateFeePaymentDate(todayStr);
+    setLateFeePaymentError("");
+  }, [editingStudent, open, feeRule, setError]);
 
   function calculateLateFee(
     dueDate: string | null, // student's fee due date from DB
@@ -190,28 +280,7 @@ export const StudentDialog = ({
       is_active: boolean;
     } | null,
   ): number {
-    // If no rule or rule is inactive, no late fee
-    if (!feeRule || !feeRule.is_active) return 0;
-
-    const today = new Date();
-    const lateFeeAmt = parseFloat(feeRule.late_fee_amount) || 0;
-    const graceDays = feeRule.grace_days || 0;
-    const dueDayOfMonth = feeRule.due_day_of_month || 1;
-
-    // Build the actual due date using due_day_of_month for current month
-    const due = dueDate
-      ? new Date(dueDate)
-      : new Date(today.getFullYear(), today.getMonth(), dueDayOfMonth);
-
-    // Add grace period
-    const deadlineWithGrace = new Date(due);
-    deadlineWithGrace.setDate(deadlineWithGrace.getDate() + graceDays);
-
-    // If today is still within grace period — no late fee
-    if (today <= deadlineWithGrace) return 0;
-
-    // Past grace period — apply late fee
-    return lateFeeAmt;
+    return calculateLateFeeCharge(dueDate, feeRule);
   }
 
   const set = (name: string, value: any) => {
@@ -241,16 +310,72 @@ export const StudentDialog = ({
       standard: cls.classname, // ← This is enough
       roll_no: maxRoll,
       total_fees: tf,
-      balance: tf,
+      balance: Math.max(
+        calcEffective({ ...p, total_fees: tf }) - Number(p.fees_paid || 0),
+        0,
+      ),
     }));
   };
 
   const submit = async () => {
+    if (
+      form.status === "active" &&
+      !moment(form.active_date, "YYYY-MM-DD", true).isValid()
+    ) {
+      setError("Enter a valid active date for an active student.");
+      return;
+    }
+
     setLoading(true);
     try {
       await onSubmit(form, editingStudent?.student_id);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const recordLateFeePayment = async (
+    pendingLateFee: number,
+  ): Promise<void> => {
+    const amount = Number(lateFeePaymentAmount);
+    if (!editingStudent?.student_id) {
+      setLateFeePaymentError("Save the student before recording a payment.");
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0 || amount > pendingLateFee) {
+      setLateFeePaymentError(
+        `Enter an amount between ₹0.01 and ₹${pendingLateFee.toLocaleString(
+          "en-IN",
+          { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+        )}.`,
+      );
+      return;
+    }
+    if (!lateFeePaymentDate) {
+      setLateFeePaymentError("Select the payment date.");
+      return;
+    }
+
+    setLateFeePaymentLoading(true);
+    setLateFeePaymentError("");
+    try {
+      const result = await onRecordLateFeePayment(
+        editingStudent.student_id,
+        amount,
+        lateFeePaymentDate,
+      );
+      if (result) {
+        setForm((current) => ({
+          ...current,
+          late_fees_charges: result.late_fees_charges,
+          late_fees_paid: result.late_fees_paid,
+          late_fees_balance: result.late_fees_balance,
+          last_late_fee_payment_date: result.last_late_fee_payment_date,
+        }));
+        setLateFeePaymentAmount("");
+      }
+    } finally {
+      setLateFeePaymentLoading(false);
     }
   };
 
@@ -260,18 +385,18 @@ export const StudentDialog = ({
         style={{
           background: T.surface,
           borderRadius: 18,
-          maxWidth: 560,
-          width: "95vw",
+          maxWidth: 960,
+          width: "96vw",
           fontFamily: font,
           padding: 0,
           overflow: "hidden",
           boxShadow: T.shadowXl,
-          maxHeight: "98vh",
+          maxHeight: "95vh",
           display: "flex",
           flexDirection: "column",
         }}
       >
-        {/* ── Header + Tab nav ── */}
+        {/* ── Header ── */}
 
         <div
           style={{
@@ -350,42 +475,26 @@ export const StudentDialog = ({
             </div>
           </div>
 
-          {/* Tabs */}
-          <div style={{ display: "flex" }}>
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "9px 18px",
-                  fontSize: 13,
-                  fontWeight: tab === t.id ? 700 : 500,
-                  color: tab === t.id ? T.accent : T.muted,
-                  background: "transparent",
-                  border: "none",
-                  borderBottom:
-                    tab === t.id
-                      ? `2px solid ${T.accent}`
-                      : "2px solid transparent",
-                  cursor: "pointer",
-                  transition: "all .15s",
-                  marginBottom: -1,
-                  fontFamily: font,
-                }}
-              >
-                {t.icon} {t.label}
-              </button>
-            ))}
-          </div>
         </div>
 
-        {/* ── Tab body ── */}
-        <div style={{ overflowY: "auto", flex: 1, padding: "20px 24px" }}>
+        {/* ── Full student view ── */}
+        <div
+          style={{
+            overflowY: "auto",
+            flex: 1,
+            padding: "20px 24px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 18,
+          }}
+        >
           {/* Personal */}
-          {tab === "personal" && (
+          <section style={sectionStyle}>
+            <SectionHeading
+              icon={<User size={16} />}
+              title="Personal Details"
+              description="Student identity and contact information"
+            />
             <div
               style={{
                 display: "grid",
@@ -470,17 +579,29 @@ export const StudentDialog = ({
                 </Field>
               </div>
             </div>
-          )}
+          </section>
 
           {/* Academic */}
-          {tab === "academic" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <section style={sectionStyle}>
+            <SectionHeading
+              icon={<BookOpen size={16} />}
+              title="Academics"
+              description="Enrollment, class, roll number, and student status"
+            />
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 14,
+              }}
+            >
               <Field label="Enrollment Date" required>
                 <Input
                   name="enrollment_date"
                   type="date"
                   value={form?.enrollment_date}
                   onChange={onInput}
+                  disabled={!editingStudent}
                   style={inp}
                 />
               </Field>
@@ -528,6 +649,7 @@ export const StudentDialog = ({
               </Field>
               <div
                 style={{
+                  gridColumn: "1 / -1",
                   background: T.infoBg,
                   border: `1px solid ${T.infoBorder}`,
                   borderRadius: 10,
@@ -546,19 +668,32 @@ export const StudentDialog = ({
                 next available roll number.
               </div>
             </div>
-          )}
+          </section>
 
           {/* Fees */}
-          {tab === "fees" &&
-            (() => {
+          {(() => {
               const total = parseFloat(`${form?.total_fees}`) || 0;
               const paid = parseFloat(`${form?.fees_paid}`) || 0;
-              const lateFee = calculateLateFee(form?.due_date, feeRule);
-              const effective_total = total + lateFee;
-              const balance = effective_total - paid;
+              const concession = parseFloat(`${form?.concession}`) || 0;
+              const scholarship = parseFloat(`${form?.scholarship}`) || 0;
+              const lateFee = Math.max(
+                Number(form?.late_fees_charges ?? 0),
+                calculateLateFee(form?.due_date, feeRule),
+              );
+              const lateFeesPaid = Number(form?.late_fees_paid ?? 0);
+              const lateFeeBalance = Math.max(lateFee - lateFeesPaid, 0);
+              const effective_total = calcEffective({
+                ...form,
+                total_fees: total,
+                late_fees_charges: lateFee,
+              });
+              const balance = Math.max(effective_total - paid, 0);
               const pct =
                 effective_total > 0
-                  ? Math.round((paid / effective_total) * 100)
+                  ? Math.min(
+                      Math.max(Math.round((paid / effective_total) * 100), 0),
+                      100,
+                    )
                   : 0;
 
               const payAmt = parseFloat(payingamount || "0") || 0;
@@ -566,11 +701,19 @@ export const StudentDialog = ({
                 Math.round((paid + payAmt) * 100) / 100,
                 effective_total,
               );
-              const previewBalance =
-                Math.round((effective_total - previewPaid) * 100) / 100;
+              const previewBalance = Math.max(
+                Math.round((effective_total - previewPaid) * 100) / 100,
+                0,
+              );
               const previewPct =
                 effective_total > 0
-                  ? Math.round((previewPaid / effective_total) * 100)
+                  ? Math.min(
+                      Math.max(
+                        Math.round((previewPaid / effective_total) * 100),
+                        0,
+                      ),
+                      100,
+                    )
                   : 0;
               const hasPreview = payAmt > 0;
 
@@ -582,35 +725,81 @@ export const StudentDialog = ({
               const handleApplyPayment = () => {
                 if (payAmt <= 0) return;
                 const newPaid = Math.min(paid + payAmt, effective_total);
-                onInput({
-                  target: { name: "fees_paid", value: String(newPaid) },
-                } as any);
+                setForm((current) => ({
+                  ...current,
+                  fees_paid: newPaid,
+                  last_payment_date: paymentDate,
+                }));
+                setError("");
                 setPayingamount("0");
               };
 
               return (
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 14 }}
-                >
+                <section style={sectionStyle}>
+                  <SectionHeading
+                    icon={<Wallet size={16} />}
+                    title="Fees"
+                    description="Fee summary, concessions, and payment tracking"
+                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
                   {/* Summary Stats */}
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr 1fr 1fr",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))",
                       gap: 8,
                     }}
                   >
                     {[
-                      { label: "Total Fees", value: fmt(total), color: T.text },
+                      { label: "Total Fees", value: fmt2(total), color: T.text },
+                      ...(concession > 0
+                        ? [
+                            {
+                              label: "Concession",
+                              value: fmt2(concession),
+                              color: "#6D28D9",
+                            },
+                          ]
+                        : []),
+                      ...(scholarship > 0
+                        ? [
+                            {
+                              label: "Scholarship",
+                              value: fmt2(scholarship),
+                              color: "#047857",
+                            },
+                          ]
+                        : []),
                       {
                         label: "Fees Paid",
-                        value: fmt(paid),
+                        value: fmt2(paid),
                         color: "#065F46",
                       },
                       {
                         label: "Balance Due",
-                        value: fmt(balance),
+                        value: fmt2(balance),
                         color: balance > 0 ? "#B91C1C" : "#065F46",
+                      },
+                      {
+                        label: "Fine",
+                        value: fmt2(lateFee),
+                        color: "#92400E",
+                      },
+                      {
+                        label: "Fine Paid",
+                        value: fmt2(lateFeesPaid),
+                        color: "#065F46",
+                      },
+                      {
+                        label: "Fine Balance",
+                        value: fmt2(lateFeeBalance),
+                        color: lateFeeBalance > 0 ? "#B91C1C" : "#065F46",
                       },
                     ].map(({ label, value, color }) => (
                       <div
@@ -649,7 +838,7 @@ export const StudentDialog = ({
                       }}
                     >
                       <span style={{ fontSize: 11, color: T.muted }}>
-                        Payment progress
+                        Net fee payment progress
                       </span>
                       <span
                         style={{
@@ -681,165 +870,123 @@ export const StudentDialog = ({
                     </div>
                   </div>
 
-                  {/* ✅ REDESIGNED: Late Fee — inline pill style */}
+                  {/* Late fees accrue separately and have their own payment ledger. */}
                   {lateFee > 0 && (
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "10px 14px",
+                        padding: "12px 14px",
                         borderRadius: 10,
                         background: "#FFFBEB",
                         border: "0.5px solid #FCD34D",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 10,
                       }}
                     >
                       <div
                         style={{
                           display: "flex",
+                          justifyContent: "space-between",
                           alignItems: "center",
-                          gap: 8,
+                          gap: 10,
                         }}
                       >
-                        <span
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 500,
-                            color: T.text,
-                          }}
-                        >
-                          Late Fee
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>
+                          Accrued late fees
                         </span>
                         <span
                           style={{
-                            fontSize: 9,
-                            fontWeight: 600,
-                            padding: "2px 7px",
-                            borderRadius: 20,
-                            background: "#FEF3C7",
+                            fontSize: 14,
+                            fontWeight: 700,
                             color: "#92400E",
-                            border: "0.5px solid #FCD34D",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.05em",
                           }}
                         >
-                          Auto-applied
+                          {fmt2(lateFee)}
                         </span>
                       </div>
-                      <span
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 600,
-                          color: "#B45309",
-                        }}
-                      >
-                        {fmt2(lateFee)}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Concession + Scholarship — only show the ones with a value > 0 */}
-                  {(() => {
-                    const concession = parseFloat(`${form?.concession}`) || 0;
-                    const scholarship = parseFloat(`${form?.scholarship}`) || 0;
-                    const items = [
-                      {
-                        key: "concession",
-                        label: "Concession",
-                        value: concession,
-                        iconColor: "#7C3AED",
-                        bg: "#FAF5FF",
-                        border: "#E9D5FF",
-                        valueColor: "#6D28D9",
-                      },
-                      {
-                        key: "scholarship",
-                        label: "Scholarship",
-                        value: scholarship,
-                        iconColor: "#059669",
-                        bg: "#F0FDF4",
-                        border: "#BBF7D0",
-                        valueColor: "#065F46",
-                      },
-                    ].filter((item) => item.value > 0);
-
-                    if (items.length === 0) return null;
-
-                    return (
                       <div
                         style={{
-                          display: "grid",
-                          gridTemplateColumns:
-                            items.length === 1 ? "1fr" : "1fr 1fr",
-                          gap: 8,
+                          display: "flex",
+                          justifyContent: "space-between",
+                          fontSize: 11,
+                          color: T.muted,
                         }}
                       >
-                        {items.map(
-                          ({
-                            key,
-                            label,
-                            value,
-                            iconColor,
-                            bg,
-                            border,
-                            valueColor,
-                          }) => (
-                            <div
-                              key={key}
-                              style={{
-                                background: bg,
-                                border: `0.5px solid ${border}`,
-                                borderRadius: 10,
-                                padding: "12px 14px",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 5,
-                                  marginBottom: 6,
-                                }}
-                              >
-                                <span style={{ fontSize: 8, color: iconColor }}>
-                                  ✦
-                                </span>
-                                <span
-                                  style={{
-                                    fontSize: 10,
-                                    fontWeight: 600,
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.06em",
-                                    color: iconColor,
-                                  }}
-                                >
-                                  {label}
-                                </span>
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: 16,
-                                  fontWeight: 700,
-                                  color: valueColor,
-                                }}
-                              >
-                                {fmt2(value)}
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: 10,
-                                  color: T.muted,
-                                  marginTop: 2,
-                                }}
-                              >
-                                Applied externally
-                              </div>
-                            </div>
-                          ),
-                        )}
+                        <span>Paid: {fmt2(lateFeesPaid)}</span>
+                        <span style={{ fontWeight: 700, color: "#92400E" }}>
+                          Pending: {fmt2(lateFeeBalance)}
+                        </span>
                       </div>
-                    );
-                  })()}
+                      {editingStudent && lateFeeBalance > 0 && (
+                        <>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "1fr 1fr",
+                              gap: 10,
+                            }}
+                          >
+                            <Field label="Late Fee Payment (₹)">
+                              <Input
+                                type="number"
+                                min="0.01"
+                                max={lateFeeBalance}
+                                step="0.01"
+                                value={lateFeePaymentAmount}
+                                onChange={(e) =>
+                                  setLateFeePaymentAmount(e.target.value)
+                                }
+                                style={inp}
+                              />
+                            </Field>
+                            <Field label="Payment Date">
+                              <Input
+                                type="date"
+                                value={lateFeePaymentDate}
+                                max={moment().format("YYYY-MM-DD")}
+                                onChange={(e) =>
+                                  setLateFeePaymentDate(e.target.value)
+                                }
+                                style={inp}
+                              />
+                            </Field>
+                          </div>
+                          <Button
+                            type="button"
+                            disabled={lateFeePaymentLoading}
+                            onClick={() =>
+                              void recordLateFeePayment(lateFeeBalance)
+                            }
+                            style={{
+                              width: "100%",
+                              background: "#B45309",
+                              color: "#fff",
+                              borderRadius: 8,
+                            }}
+                          >
+                            {lateFeePaymentLoading
+                              ? "Recording payment…"
+                              : "Record Late Fee Payment"}
+                          </Button>
+                        </>
+                      )}
+                      {lateFeeBalance === 0 && (
+                        <span style={{ fontSize: 11, color: "#047857" }}>
+                          Late fees paid in full
+                        </span>
+                      )}
+                      {!editingStudent && lateFeeBalance > 0 && (
+                        <span style={{ fontSize: 11, color: T.muted }}>
+                          Save the student before recording a late-fee payment.
+                        </span>
+                      )}
+                      {lateFeePaymentError && (
+                        <span style={{ fontSize: 11, color: T.danger }}>
+                          {lateFeePaymentError}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   <div style={{ height: "0.5px", background: T.border }} />
 
@@ -896,10 +1043,9 @@ export const StudentDialog = ({
                       </Field>
                       <Field label="Payment Date">
                         <Input
-                          name="last_payment_date"
                           type="date"
-                          value={form?.last_payment_date}
-                          onChange={onInput}
+                          value={paymentDate}
+                          onChange={(e) => setPaymentDate(e.target.value)}
                           style={inp}
                         />
                       </Field>
@@ -971,7 +1117,7 @@ export const StudentDialog = ({
                           cursor: "pointer",
                         }}
                       >
-                        Apply ₹{payAmt.toLocaleString("en-IN")} to Account
+                        Apply ₹{payAmt.toLocaleString("en-IN")}
                       </button>
                     )}
                   </div>
@@ -1003,13 +1149,20 @@ export const StudentDialog = ({
                         name="due_date"
                         type="date"
                         value={form?.due_date}
-                        onChange={onInput}
-                        style={inp}
+                        readOnly
+                        aria-readonly="true"
+                        style={{
+                          ...inp,
+                          background: T.bg,
+                          color: T.muted,
+                          cursor: "default",
+                        }}
                       />
                     </Field>
                    
                   </div>
-                </div>
+                  </div>
+                </section>
               );
             })()}
         </div>
@@ -1047,25 +1200,9 @@ export const StudentDialog = ({
             flexShrink: 0,
           }}
         >
-          {/* Progress dots */}
-          <div style={{ display: "flex", gap: 6 }}>
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                style={{
-                  width: tab === t.id ? 18 : 6,
-                  height: 6,
-                  borderRadius: 99,
-                  padding: 0,
-                  border: "none",
-                  background: tab === t.id ? T.accent : T.line,
-                  cursor: "pointer",
-                  transition: "all .2s",
-                }}
-              />
-            ))}
-          </div>
+          <span style={{ color: T.muted, fontSize: 12 }}>
+            Personal, academic, and fee details
+          </span>
           <div style={{ display: "flex", gap: 10 }}>
             <Button
               variant="outline"

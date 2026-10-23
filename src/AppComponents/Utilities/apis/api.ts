@@ -1,4 +1,7 @@
-import type { Student } from "@/AppComponents/Pages/StudentDirectory/types";
+import type {
+  LateFeePaymentSummary,
+  Student,
+} from "@/AppComponents/Pages/StudentDirectory/types";
 import axios from "axios";
 import type {
   InternalAxiosRequestConfig,
@@ -203,6 +206,14 @@ export const studentsApi = {
     put<ApiItemResponse<Student>>(
       `/students/${id}`,
       student as Record<string, unknown>,
+    ),
+  recordLateFeePayment: (
+    id: number,
+    payment: { amount: number; payment_date: string },
+  ) =>
+    post<ApiItemResponse<LateFeePaymentSummary>>(
+      `/students/${id}/late-fee-payments`,
+      payment,
     ),
   remove: (id: number) => del<ApiItemResponse<null>>(`/students/${id}`),
 };

@@ -11,6 +11,9 @@ export interface Student {
   fees_paid: number;
   balance: number;
   late_fees_charges: number;
+  late_fees_paid?: number;
+  late_fees_balance?: number;
+  last_late_fee_payment_date?: string | null;
   concession: number;
   scholarship: number;
   last_payment_date: string;
@@ -36,6 +39,14 @@ export interface FeeRule {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface LateFeePaymentSummary {
+  student_id: number;
+  late_fees_charges: number;
+  late_fees_paid: number;
+  late_fees_balance: number;
+  last_late_fee_payment_date: string;
 }
 
 export interface ClassItem {

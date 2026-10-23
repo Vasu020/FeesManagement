@@ -5,13 +5,15 @@ import {
   AlertTriangle,
   Banknote,
   TrendingDown,
+  Clock3,
 } from "lucide-react";
 import { T } from "../utils/theme";
-import { fmtINR, hasPendingFees } from "../utils/helpers";
+import { calcBalance, fmtINR, hasPendingFees } from "../utils/helpers";
 import type { Student } from "../types";
 
 interface Props {
   students: Student[];
+  allStudents: Student[];
 }
 
 const CARDS = [
@@ -51,15 +53,34 @@ const CARDS = [
     color: T.danger,
     bg: T.dangerBg,
   },
+  {
+    key: "lateFees",
+    label: "Late Fees",
+    Icon: Clock3,
+    color: "#B45309",
+    bg: "#FFFBEB",
+  },
 ];
 
-export const KpiStrip = ({ students }: Props) => {
+export const KpiStrip = ({ students, allStudents }: Props) => {
   const n = students.length;
   const active = students.filter((s) => s.status === "active").length;
   const inactive = students.filter((s) => s.status === "inactive").length;
   const pending = students.filter(hasPendingFees).length;
   const paid = students.reduce((a, s) => a + Number(s.fees_paid ?? 0), 0);
-  const bal = students.reduce((a, s) => a + Number(s.balance ?? 0), 0);
+  const bal = students.reduce((a, s) => a + calcBalance(s), 0);
+  const lateFees = allStudents.reduce(
+    (a, s) =>
+      a +
+      Math.max(
+        Number(
+          s.late_fees_balance ??
+            Number(s.late_fees_charges ?? 0) - Number(s.late_fees_paid ?? 0),
+        ),
+        0,
+      ),
+    0,
+  );
 
   const values: Record<string, string | number> = {
     total: n,
@@ -68,6 +89,7 @@ export const KpiStrip = ({ students }: Props) => {
     pending,
     collected: fmtINR(paid),
     outstanding: fmtINR(bal),
+    lateFees: fmtINR(lateFees),
   };
   const notes: Record<string, string> = {
     total: "enrolled",
@@ -76,6 +98,7 @@ export const KpiStrip = ({ students }: Props) => {
     pending: "need attention",
     collected: "fees paid",
     outstanding: "balance due",
+    lateFees: "pending separately",
   };
 
   return (
